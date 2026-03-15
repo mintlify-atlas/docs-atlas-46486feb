@@ -1,0 +1,166 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "GitAgent",
+  "projectDescription": "A framework-agnostic, git-native CLI tool and open standard for defining, versioning, and running AI agents across any framework.",
+  "theme": "palm",
+  "primaryColor": "#7c7c7c",
+  "lightColor": "#060606",
+  "darkColor": "#dedede",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/directory-structure",
+              "concepts/agent-manifest",
+              "concepts/soul-and-rules",
+              "concepts/skills",
+              "concepts/tools",
+              "concepts/workflows",
+              "concepts/memory",
+              "concepts/hooks",
+              "concepts/sub-agents",
+              "concepts/inheritance-composition"
+            ]
+          },
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "cli/init",
+              "cli/validate",
+              "cli/info",
+              "cli/export",
+              "cli/import",
+              "cli/install",
+              "cli/run",
+              "cli/audit",
+              "cli/skills",
+              "cli/lyzr"
+            ]
+          },
+          {
+            "group": "Adapters & Runners",
+            "pages": [
+              "adapters/overview",
+              "adapters/claude-code",
+              "adapters/openai",
+              "adapters/crewai",
+              "adapters/openclaw",
+              "adapters/nanobot",
+              "adapters/lyzr",
+              "adapters/github-models",
+              "adapters/git-auto-detect"
+            ]
+          },
+          {
+            "group": "Compliance",
+            "pages": [
+              "compliance/overview",
+              "compliance/risk-tiers",
+              "compliance/finra",
+              "compliance/federal-reserve",
+              "compliance/sec-cfpb",
+              "compliance/segregation-of-duties",
+              "compliance/audit-report"
+            ]
+          },
+          {
+            "group": "Patterns",
+            "pages": [
+              "patterns/human-in-the-loop",
+              "patterns/agent-versioning",
+              "patterns/branch-deployment",
+              "patterns/cicd",
+              "patterns/monorepo",
+              "patterns/agent-forking"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/minimal",
+              "examples/standard",
+              "examples/full",
+              "examples/lyzr-agent"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Specification",
+        "groups": [
+          {
+            "group": "Spec v0.1.0",
+            "pages": [
+              "spec/overview",
+              "spec/agent-yaml",
+              "spec/soul-md",
+              "spec/rules-md",
+              "spec/duties-md",
+              "spec/skills-standard",
+              "spec/tools-schema",
+              "spec/hooks-schema",
+              "spec/workflows-schema",
+              "spec/memory-schema",
+              "spec/knowledge-schema",
+              "spec/validation-rules",
+              "spec/json-schemas"
+            ]
+          },
+          {
+            "group": "Regulatory Reference",
+            "pages": [
+              "spec/regulatory-finra",
+              "spec/regulatory-federal-reserve",
+              "spec/regulatory-sod"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Git-native agent definitions — version control, branching, diffing built in",
+    "Framework-agnostic — export to Claude Code, OpenAI, CrewAI, Lyzr, GitHub Models, and more",
+    "First-class compliance support — FINRA, Federal Reserve, SEC, CFPB regulatory requirements",
+    "Segregation of duties — maker/checker/executor/auditor role separation with conflict enforcement",
+    "Skills system — adopts the Agent Skills open standard with marketplace registry support",
+    "Agent composition — extend parent agents, declare dependencies, define sub-agents",
+    "CI/CD for agents — validate on every push via GitHub Actions",
+    "Multi-adapter run command — clone any git repo and run the agent with the best adapter",
+    "Compliance audit report — section-by-section regulatory checklist with pass/fail indicators",
+    "MCP-compatible tool definitions stored in tools/*.yaml"
+  ],
+  "publicApiSurface": [
+    "gitagent init [--template minimal|standard|full] [--dir]",
+    "gitagent validate [--dir] [--compliance]",
+    "gitagent info [--dir]",
+    "gitagent export --format <system-prompt|claude-code|openai|crewai|openclaw|nanobot|lyzr|github> [--dir] [--output]",
+    "gitagent import --from <claude|cursor|crewai> <path> [--dir]",
+    "gitagent install [--dir]",
+    "gitagent run [--repo|--dir] [--adapter] [--branch] [--prompt]",
+    "gitagent audit [--dir]",
+    "gitagent skills search|install|list|info",
+    "gitagent lyzr create|update|info|run",
+    "agent.yaml manifest schema (name, version, description, model, skills, tools, compliance, extends, dependencies)",
+    "SOUL.md identity file",
+    "RULES.md constraints file",
+    "DUTIES.md segregation-of-duties policy file",
+    "skills/*/SKILL.md Agent Skills standard format",
+    "tools/*.yaml MCP-compatible tool definition schema",
+    "hooks/hooks.yaml lifecycle event handler schema",
+    "workflows/*.yaml multi-step procedure schema"
+  ]
+}
