@@ -1,0 +1,84 @@
+---
+title: "Adapters & runners overview"
+description: "How gitagent bridges your agent definition to any AI framework — from Claude Code to CrewAI, Lyzr, and GitHub Models."
+---
+
+Adapters are the bridge between a gitagent directory and a running AI framework. Define your agent once in `agent.yaml` and `SOUL.md`; adapters handle translating that definition into whatever format the target framework expects.
+
+## Two ways to use adapters
+
+Adapters are exposed through two commands:
+
+| Command | What it does |
+|---------|-------------|
+| `gitagent export -f <format>` | Converts the agent to a framework-specific file format and writes it to stdout or a file. No execution happens. |
+| `gitagent run -a <adapter>` | Runs the agent end-to-end — exports the format, writes any temp files, and launches the framework process. |
+
+Use `export` when you want to inspect the generated output, commit it to your repo, or pass it to a CI pipeline. Use `run` when you want to execute the agent immediately.
+
+```bash
+# Export only — inspect the output
+gitagent export -f openai -d ./my-agent -o agent.py
+
+# Run end-to-end
+gitagent run -d ./my-agent -a openai -p "Review this code"
+```
+
+## All adapters
+
+| Adapter | `run` mode | Prompt required | Requirements |
+|---------|------------|-----------------|-------------|
+| `claude` | Interactive or one-shot | No (optional) | [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) |
+| `openai` | One-shot | No | Python 3, `openai-agents` package, `OPENAI_API_KEY` |
+| `crewai` | One-shot | No | `crewai` CLI (`pip install crewai`) |
+| `openclaw` | One-shot | **Yes** (`-p`) | OpenClaw CLI, `ANTHROPIC_API_KEY` |
+| `nanobot` | Interactive or one-shot | No (optional) | Nanobot CLI (`pip install nanobot-ai`), `ANTHROPIC_API_KEY` |
+| `lyzr` | One-shot | **Yes** (`-p`) | `LYZR_API_KEY` |
+| `github` | One-shot | **Yes** (`-p`) | `GITHUB_TOKEN` or `GH_TOKEN` with `models:read` scope |
+| `git` | Auto-detect | Depends on detected adapter | Depends on detected adapter |
+| `prompt` | Print only | No | None |
+
+## How to choose an adapter
+
+**You already use Claude Code** — Use the `claude` adapter. It gives you an interactive terminal session with full tool access, file permissions, and hook support.
+
+**You need OpenAI models or the Agents SDK** — Use the `openai` adapter. It generates Python code using the OpenAI Agents SDK and runs it with `python3`.
+
+**You're on a CrewAI team** — Use the `crewai` adapter. It exports a YAML crew configuration and runs `crewai kickoff`.
+
+**You want a quick one-shot answer without managing credentials yourself** — Use the `github` adapter. GitHub Models is accessible with any GitHub token that has the `models:read` scope, which many developers already have.
+
+**You want to deploy to a hosted platform** — Use the `lyzr` adapter. It creates a persistent agent on Lyzr Studio that you can chat with, update, and share.
+
+**You're cloning an unknown repo and want it to just work** — Use `git`. The git runner auto-detects the best adapter from the repo's contents and delegates to it.
+
+**You need just the system prompt text** — Use `prompt`. It prints the assembled system prompt to stdout and exits without launching any framework.
+
+## Explore each adapter
+
+<CardGroup cols={2}>
+  <Card title="Claude Code" icon="terminal" href="/adapters/claude-code">
+    Interactive terminal sessions via the Claude Code CLI — full tool access, hooks, and sub-agent support
+  </Card>
+  <Card title="OpenAI" icon="robot" href="/adapters/openai">
+    Generates Python code using the OpenAI Agents SDK and runs it with python3
+  </Card>
+  <Card title="CrewAI" icon="users" href="/adapters/crewai">
+    Exports a CrewAI YAML crew configuration and runs crewai kickoff
+  </Card>
+  <Card title="OpenClaw" icon="bolt" href="/adapters/openclaw">
+    Creates a temporary workspace and runs the OpenClaw embedded agent locally
+  </Card>
+  <Card title="Nanobot" icon="microchip" href="/adapters/nanobot">
+    Interactive or one-shot sessions via the Nanobot CLI, with auto-provisioned auth
+  </Card>
+  <Card title="Lyzr" icon="cloud" href="/adapters/lyzr">
+    Deploys to Lyzr Studio via REST API and sends prompts to the inference endpoint
+  </Card>
+  <Card title="GitHub Models" icon="github" href="/adapters/github-models">
+    Streams responses from GitHub Models using your GitHub token — no separate API key needed
+  </Card>
+  <Card title="Git auto-detect" icon="code-branch" href="/adapters/git-auto-detect">
+    Clones a repo and automatically picks the best adapter from the repo's contents
+  </Card>
+</CardGroup>

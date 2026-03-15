@@ -1,0 +1,525 @@
+---
+title: "Full example"
+description: "A production-ready financial compliance agent with hooks, workflows, sub-agents, segregation of duties, and full FINRA/SEC/Fed regulatory configuration."
+---
+
+The full example is a production-ready compliance analyst agent for FINRA and Federal Reserve regulated environments. It uses every directory in the gitagent spec: skills, tools, knowledge, memory, hooks, workflows, sub-agents, compliance artifacts, and config overrides.
+
+Use this as a starting point when building regulated-environment agents that require audit logging, human-in-the-loop supervision, and formal compliance documentation.
+
+## Directory structure
+
+```text
+examples/full/
+├── agent.yaml                          # Full compliance configuration
+├── SOUL.md                             # Regulatory analyst identity
+├── RULES.md                            # Regulatory hard constraints
+├── DUTIES.md                           # Segregation of duties policy
+├── AGENTS.md                           # Framework-agnostic instructions
+├── agents/
+│   └── fact-checker/
+│       ├── agent.yaml
+│       ├── SOUL.md
+│       └── DUTIES.md
+├── compliance/
+│   ├── risk-assessment.md
+│   ├── regulatory-map.yaml
+│   └── validation-schedule.yaml
+├── config/
+│   ├── default.yaml
+│   └── production.yaml
+├── examples/
+│   ├── good-outputs.md
+│   ├── bad-outputs.md
+│   └── scenarios/
+├── hooks/
+│   ├── hooks.yaml
+│   └── scripts/
+│       ├── load-compliance-context.sh
+│       ├── audit-tool-call.sh
+│       ├── validate-tool-output.sh
+│       ├── check-communications-compliance.sh
+│       ├── audit-response.sh
+│       ├── escalate-error.sh
+│       └── finalize-audit-log.sh
+├── knowledge/
+│   ├── index.yaml
+│   ├── finra-rules-summary.md
+│   └── federal-reserve-guidance.md
+├── memory/
+│   ├── MEMORY.md
+│   └── memory.yaml
+├── skills/
+│   ├── regulatory-analysis/
+│   │   └── SKILL.md
+│   └── document-review/
+│       └── SKILL.md
+├── tools/
+│   ├── search-regulations.yaml
+│   └── generate-report.yaml
+└── workflows/
+    └── regulatory-review.yaml
+```
+
+## Key files
+
+### agent.yaml
+
+The manifest configures `claude-opus-4-6`, two skills, two tools, a fact-checker sub-agent, and a full `compliance:` block covering all four frameworks: FINRA, Federal Reserve, SEC, and CFPB.
+
+```yaml agent.yaml
+spec_version: "0.1.0"
+name: compliance-analyst
+version: 1.0.0
+description: Financial compliance analysis agent for FINRA and Federal Reserve regulated environments
+author: gitagent-examples
+license: proprietary
+model:
+  preferred: claude-opus-4-6
+  fallback:
+    - claude-sonnet-4-5-20250929
+  constraints:
+    temperature: 0.1
+    max_tokens: 8192
+dependencies:
+  - name: fact-checker
+    source: ./agents/fact-checker
+    version: 1.0.0
+    mount: agents/fact-checker
+    vendor_management:
+      due_diligence_date: "2026-01-15"
+      soc_report: false
+      risk_assessment: low
+skills:
+  - regulatory-analysis
+  - document-review
+tools:
+  - search-regulations
+  - generate-report
+agents:
+  fact-checker:
+    description: Verifies factual claims against authoritative sources
+    delegation:
+      mode: auto
+      triggers:
+        - factual_claim_detected
+delegation:
+  mode: auto
+runtime:
+  max_turns: 50
+  temperature: 0.1
+  timeout: 300
+compliance:
+  risk_tier: high
+  frameworks:
+    - finra
+    - federal_reserve
+    - sec
+    - cfpb
+  supervision:
+    designated_supervisor: chief-compliance-officer
+    review_cadence: monthly
+    human_in_the_loop: always
+    escalation_triggers:
+      - confidence_below: 0.85
+      - action_type: regulatory_filing
+      - action_type: customer_communication
+      - action_type: credit_decision
+      - error_detected: true
+    override_capability: true
+    kill_switch: true
+  recordkeeping:
+    audit_logging: true
+    log_format: structured_json
+    retention_period: 7y
+    log_contents:
+      - prompts_and_responses
+      - tool_calls
+      - decision_pathways
+      - model_version
+      - timestamps
+    immutable: true
+  model_risk:
+    inventory_id: MRM-2026-0047
+    validation_cadence: quarterly
+    validation_type: full
+    conceptual_soundness: compliance/risk-assessment.md
+    ongoing_monitoring: true
+    outcomes_analysis: true
+    drift_detection: true
+    parallel_testing: false
+  data_governance:
+    pii_handling: redact
+    data_classification: restricted
+    consent_required: true
+    cross_border: false
+    bias_testing: true
+    lda_search: true
+  communications:
+    type: institutional
+    pre_review_required: true
+    fair_balanced: true
+    no_misleading: true
+    disclosures_required: true
+  vendor_management:
+    due_diligence_complete: true
+    soc_report_required: true
+    vendor_ai_notification: true
+    subcontractor_assessment: true
+  segregation_of_duties:
+    roles:
+      - id: analyst
+        description: Performs regulatory analysis and generates findings
+        permissions:
+          - create
+          - submit
+      - id: reviewer
+        description: Reviews analysis for accuracy and completeness
+        permissions:
+          - review
+          - approve
+          - reject
+      - id: auditor
+        description: Audits completed reviews and maintains compliance trail
+        permissions:
+          - audit
+          - report
+    conflicts:
+      - [analyst, reviewer]
+      - [analyst, auditor]
+      - [reviewer, auditor]
+    assignments:
+      compliance-analyst: [analyst]
+      fact-checker: [reviewer]
+    isolation:
+      state: full
+      credentials: separate
+    handoffs:
+      - action: regulatory_filing
+        required_roles: [analyst, reviewer]
+        approval_required: true
+      - action: customer_communication
+        required_roles: [analyst, reviewer]
+        approval_required: true
+    enforcement: strict
+tags:
+  - compliance
+  - financial-services
+  - regulated
+  - finra
+  - federal-reserve
+metadata:
+  department: compliance
+  cost_center: CC-COMPLIANCE-001
+  data_sensitivity: high
+```
+
+### SOUL.md
+
+The identity file establishes the agent as a financial regulatory compliance analyst. It names the specific rule numbers it knows, sets a conservative interpretation policy, and defines confidence-based escalation behavior.
+
+```markdown SOUL.md
+# Soul
+
+## Core Identity
+I am a regulatory compliance analyst specializing in FINRA rules, SEC regulations,
+and Federal Reserve supervisory guidance. I help financial institutions ensure their
+operations, communications, and AI systems comply with applicable regulatory requirements.
+
+## Communication Style
+Precise, formal, and citation-heavy. I always reference specific rule numbers, regulatory
+notices, and supervisory letters. I structure findings by severity and provide actionable
+remediation steps. I distinguish between established requirements and emerging guidance.
+
+## Values & Principles
+- **Accuracy over speed** — I will take time to verify citations rather than provide
+  quick but uncertain answers
+- **Conservative interpretation** — When regulations are ambiguous, I err on the side
+  of stricter compliance
+- **Transparency in reasoning** — I show my work, explaining how I arrived at conclusions
+- **Proportionality** — I calibrate recommendations to the firm's size, complexity,
+  and risk profile
+- **No legal advice** — I provide regulatory analysis, not legal counsel
+
+## Domain Expertise
+- FINRA rules and regulatory notices (2210, 3110, 3120, 4511, Reg Notice 24-09, 25-07)
+- SEC regulations (Reg BI, Reg S-P, Reg S-ID, Rules 17a-3/17a-4)
+- Federal Reserve supervisory letters (SR 11-7, SR 23-4, SR 21-8)
+- CFPB guidance (Circular 2022-03, fair lending supervision)
+- BSA/AML compliance and model risk management
+- AI governance in regulated financial services
+
+## Collaboration Style
+I escalate uncertainty rather than guessing. I ask clarifying questions when requirements
+are ambiguous. I flag when a question requires legal counsel rather than regulatory
+analysis. I provide confidence levels with my assessments.
+```
+
+### hooks/hooks.yaml
+
+Every lifecycle event has a compliance-flagged hook with `fail_open: false`. This means any hook failure blocks the event rather than silently passing — appropriate for a high-risk regulated agent.
+
+```yaml hooks/hooks.yaml
+hooks:
+  on_session_start:
+    - script: scripts/load-compliance-context.sh
+      description: Load regulatory context and verify compliance configuration
+      timeout: 10
+      compliance: true
+      fail_open: false
+
+  pre_tool_use:
+    - script: scripts/audit-tool-call.sh
+      description: Log tool invocation to immutable audit trail
+      timeout: 5
+      compliance: true
+      fail_open: false
+
+  post_tool_use:
+    - script: scripts/validate-tool-output.sh
+      description: Check tool output for PII and compliance violations
+      timeout: 10
+      compliance: true
+      fail_open: false
+
+  pre_response:
+    - script: scripts/check-communications-compliance.sh
+      description: Verify response meets FINRA 2210 fair/balanced standards
+      timeout: 15
+      compliance: true
+      fail_open: false
+
+  post_response:
+    - script: scripts/audit-response.sh
+      description: Log response to audit trail with model version and timestamp
+      timeout: 5
+      compliance: true
+      fail_open: false
+
+  on_error:
+    - script: scripts/escalate-error.sh
+      description: Escalate errors to designated supervisor per FINRA 3110
+      timeout: 10
+      compliance: true
+      fail_open: true
+
+  on_session_end:
+    - script: scripts/finalize-audit-log.sh
+      description: Seal audit log and verify retention compliance
+      timeout: 15
+      compliance: true
+      fail_open: false
+```
+
+<Note>
+  `on_error` is the only hook with `fail_open: true`. If the escalation script itself fails, the agent session continues rather than hanging — because an unresponsive error handler is worse than no handler.
+</Note>
+
+### Segregation of duties
+
+The `compliance.segregation_of_duties` block in `agent.yaml` and the companion `DUTIES.md` define a three-role system where no agent may hold conflicting roles.
+
+```markdown DUTIES.md
+# Duties
+
+System-wide segregation of duties policy for the compliance-analyst agent system.
+
+## Roles
+
+| Role | Agent | Permissions | Description |
+|------|-------|-------------|-------------|
+| Analyst | compliance-analyst | create, submit | Performs regulatory analysis, generates findings and reports |
+| Reviewer | fact-checker | review, approve, reject | Reviews analysis for accuracy, verifies claims against authoritative sources |
+| Auditor | (unassigned) | audit, report | Audits completed reviews and maintains the compliance trail |
+
+## Conflict Matrix
+
+No single agent may hold both roles in any pair:
+
+- **Analyst <-> Reviewer** — The agent that produces findings cannot approve them
+- **Analyst <-> Auditor** — The agent that produces findings cannot audit them
+- **Reviewer <-> Auditor** — The agent that approves findings cannot audit the approval
+
+## Handoff Workflows
+
+### Regulatory Filing
+1. **Analyst** creates the filing draft and submits for review
+2. **Reviewer** verifies accuracy against authoritative sources, approves or rejects
+3. Approval required at each step before proceeding
+
+### Customer Communication
+1. **Analyst** drafts the communication
+2. **Reviewer** checks for FINRA 2210 compliance (fair, balanced, no misleading statements)
+3. Approval required before any communication is sent
+```
+
+With `enforcement: strict`, any SOD violation — such as assigning conflicting roles to the same agent — fails `gitagent validate` and blocks deployment.
+
+### compliance/ directory
+
+High and critical risk tiers require three compliance artifact files. The validator checks for their presence.
+
+<AccordionGroup>
+  <Accordion title="risk-assessment.md">
+    Justifies the HIGH risk tier classification, maps each applicable regulatory framework to specific rules, and lists the residual risk and controls for each risk category (model risk, supervisory risk, data risk, communications risk).
+
+    ```markdown
+    # Risk Assessment
+
+    ## Agent: compliance-analyst v1.0.0
+    ## Risk Tier: HIGH
+
+    ## Risk Tier Justification
+
+    This agent is classified as **HIGH** risk because:
+
+    1. **Regulatory domain** — Operates in FINRA/SEC/Fed regulated environment
+    2. **Decision influence** — Analysis outputs influence compliance decisions
+    3. **Data sensitivity** — May process confidential and restricted financial data
+    4. **Customer impact** — Findings may affect customer-facing communications and disclosures
+    ```
+  </Accordion>
+
+  <Accordion title="regulatory-map.yaml">
+    Maps each agent capability to the specific rules it must comply with and the controls that implement compliance. This is referenced during audit report generation.
+
+    ```yaml
+    mappings:
+      - capability: regulatory_analysis
+        rules:
+          - id: finra-3110
+            name: "FINRA Rule 3110 — Supervision"
+            controls:
+              - designated_supervisor_assigned
+              - human_in_the_loop_enforcement
+          - id: sr-11-7
+            name: "SR 11-7 — Model Risk Management"
+            controls:
+              - model_inventory_registration
+              - validation_cadence_compliance
+      - capability: customer_communication
+        rules:
+          - id: finra-2210
+            name: "FINRA Rule 2210 — Communications with the Public"
+            controls:
+              - fair_balanced_check
+              - principal_pre_review
+    ```
+  </Accordion>
+
+  <Accordion title="validation-schedule.yaml">
+    Defines the recurring validation schedule required by SR 11-7. Each entry sets a cadence, an owner, and the regulatory elements it covers.
+
+    ```yaml
+    schedule:
+      - type: full_validation
+        description: "SR 11-7 three-pillar validation"
+        cadence: quarterly
+        owner: model-risk-team
+        sr_11_7_elements:
+          - conceptual_soundness
+          - ongoing_monitoring
+          - outcomes_analysis
+      - type: supervisory_review
+        description: "FINRA 3110/3120 supervisory system review"
+        cadence: monthly
+        owner: designated-supervisor
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Sub-agent: fact-checker
+
+The `agents/fact-checker/` directory contains a full agent definition that the compliance-analyst delegates to automatically when a factual claim is detected.
+
+```yaml agents/fact-checker/agent.yaml
+spec_version: "0.1.0"
+name: fact-checker
+version: 1.0.0
+description: Verifies factual claims against authoritative regulatory sources
+model:
+  preferred: claude-haiku-4-5-20251001
+  constraints:
+    temperature: 0.0
+    max_tokens: 2048
+runtime:
+  max_turns: 10
+  timeout: 60
+tags:
+  - verification
+  - fact-checking
+```
+
+The fact-checker uses `temperature: 0.0` — deterministic output is critical for verification tasks. It also holds the `reviewer` role in the SOD configuration, meaning it can approve or reject findings produced by the `analyst` (compliance-analyst), but it cannot produce findings of its own.
+
+## Running the example
+
+<Steps>
+  <Step title="Validate with compliance checks">
+    The `--compliance` flag runs all regulatory validation rules in addition to the standard schema checks:
+
+    ```bash
+    gitagent validate -d ./examples/full --compliance
+    ```
+
+    This verifies:
+    - High risk tier has `human_in_the_loop` set and `audit_logging` enabled
+    - FINRA frameworks have `fair_balanced` and `no_misleading` set
+    - Federal Reserve (SR 11-7) has `model_risk` section with `ongoing_monitoring`
+    - SEC frameworks have audit logging and PII handling configured
+    - CFPB has `bias_testing` enabled
+    - `compliance/` directory contains the three required artifact files
+    - SOD role conflicts are resolved (no agent holds conflicting roles)
+  </Step>
+
+  <Step title="Generate an audit report">
+    `gitagent audit` produces a section-by-section compliance checklist:
+
+    ```bash
+    gitagent audit -d ./examples/full
+    ```
+
+    The report covers nine sections: risk classification, supervision (FINRA 3110), recordkeeping (FINRA 4511 / SEC 17a-4), model risk (SR 11-7), data governance, communications compliance (FINRA 2210), vendor management (SR 23-4), compliance artifacts, and audit hooks.
+  </Step>
+
+  <Step title="Run the agent">
+    Start an interactive session (requires the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)):
+
+    ```bash
+    gitagent run -d ./examples/full
+    ```
+
+    Because `human_in_the_loop: always` is set, gitagent passes `--permission-mode plan` to Claude Code, which requires your approval before any tool call or file modification.
+
+    To send a one-shot prompt:
+
+    ```bash
+    gitagent run -d ./examples/full -p "Review this broker-dealer communication for FINRA 2210 compliance"
+    ```
+  </Step>
+</Steps>
+
+## When to use this as a starting point
+
+<CardGroup cols={2}>
+  <Card title="Regulated financial services" icon="building-columns">
+    Any agent that produces analysis, communications, or decisions in a FINRA, SEC, or Federal Reserve regulated environment.
+  </Card>
+  <Card title="High-risk AI systems" icon="shield">
+    Agents that influence decisions affecting customers, require mandatory human review, or must produce immutable audit trails.
+  </Card>
+  <Card title="Multi-agent workflows" icon="diagram-project">
+    Pipelines where different agents hold different roles (analyst, reviewer, auditor) and must be prevented from holding conflicting permissions.
+  </Card>
+  <Card title="Model risk management" icon="chart-line">
+    Agents subject to SR 11-7 model risk management requirements: quarterly validation, ongoing monitoring, outcomes analysis, and drift detection.
+  </Card>
+</CardGroup>
+
+<Warning>
+  The compliance artifacts in `compliance/` contain placeholder values (assessor name, completion dates). Fill these in before using the example as a real compliance record.
+</Warning>
+
+<Card title="Compliance reference" icon="shield" href="/compliance/overview">
+  Full documentation on risk tiers, regulatory frameworks, validation rules, and the audit report format.
+</Card>

@@ -1,0 +1,213 @@
+---
+title: "Human-in-the-loop"
+description: "When an agent learns a new skill or writes to memory, it opens a branch and PR for human review before merging — keeping humans in control of every agent change."
+---
+
+The human-in-the-loop (HITL) pattern treats every agent self-modification — a new skill, an updated memory entry, a changed rule — as a pull request that a human must review before the change takes effect. The agent proposes; the human approves or rejects.
+
+This gives you:
+
+- **Auditability** — every change has a diff, an author, and a timestamp
+- **Rollback** — rejected or bad changes can be reverted with `git revert`
+- **Regulatory compliance** — FINRA Rule 3110 requires supervision controls for agent outputs in regulated contexts
+- **Safety** — no silent self-modification; the agent cannot overwrite its own SOUL.md without a review
+
+## How it works
+
+When an agent is configured with `human_in_the_loop: always`, it cannot merge changes to its own definition unilaterally. Instead:
+
+1. The agent creates a new branch for the proposed change
+2. It commits the modified files (a new skill, updated memory, a rule addition)
+3. It opens a pull request describing what changed and why
+4. A human reviews the diff, approves or requests changes
+5. The branch merges to `main` — the change takes effect
+
+<Note>
+This pattern applies to agent self-modification: writing new skills, updating memory, and changing rules. It does not mean every agent response requires human approval — that is controlled separately by `escalation_triggers`.
+</Note>
+
+## Configuring HITL in agent.yaml
+
+The `compliance.supervision.human_in_the_loop` field controls the level of human oversight. Set it in the `supervision` section:
+
+```yaml
+compliance:
+  supervision:
+    human_in_the_loop: always       # always | conditional | advisory | none
+    designated_supervisor: chief-compliance-officer
+    review_cadence: weekly
+    override_capability: true
+    kill_switch: true
+```
+
+### Supervision levels
+
+| Value | Behavior |
+|---|---|
+| `always` | All agent actions and self-modifications require human sign-off. Maps to Claude Code `--permission-mode plan`. |
+| `conditional` | Human review triggered when escalation conditions are met. |
+| `advisory` | Human is notified but not required to approve. |
+| `none` | No human review. Not permitted for `high` or `critical` risk tiers. |
+
+<Warning>
+For agents with `risk_tier: high` or `risk_tier: critical`, `human_in_the_loop` must be `always` or `conditional`. The validator will block deployment if you set it to `none`.
+</Warning>
+
+## Escalation triggers
+
+With `human_in_the_loop: conditional`, the agent escalates to human review only when specific conditions are met. Declare triggers in `escalation_triggers`:
+
+```yaml
+compliance:
+  supervision:
+    human_in_the_loop: conditional
+    escalation_triggers:
+      - confidence_below: 0.75          # Escalate when model confidence is low
+      - action_type: customer_communication
+      - action_type: regulatory_filing
+      - action_type: credit_decision
+      - error_detected: true             # Escalate on any error
+      - data_classification_above: confidential
+```
+
+Supported trigger types:
+
+| Trigger type | Description |
+|---|---|
+| `confidence_below` | Escalate when the model's confidence score falls below a threshold (0.0–1.0) |
+| `action_type` | Escalate for specific action categories: `customer_communication`, `trade_execution`, `credit_decision`, `regulatory_filing` |
+| `error_detected` | Escalate when the agent encounters an error |
+| `data_classification_above` | Escalate when data classification exceeds a level |
+| `token_count_above` | Escalate for unusually large responses |
+| `custom` | Any custom trigger condition |
+
+## Claude Code integration
+
+When you run your agent with the `claude` adapter, `human_in_the_loop: always` maps directly to the Claude Code `--permission-mode plan` flag:
+
+```bash
+gitagent run -d ./my-agent -a claude
+```
+
+The Claude runner automatically adds `--permission-mode plan` to the Claude Code CLI invocation when `human_in_the_loop: always` is set. In plan mode, Claude presents a proposed plan and waits for explicit human approval before executing any action.
+
+## The branch and PR workflow
+
+<Steps>
+  <Step title="Agent writes to a new branch">
+    When the agent proposes a change — a new skill it has learned, an update to `memory/MEMORY.md`, a rule refinement — it commits the change to a new branch:
+
+    ```bash
+    git checkout -b agent/add-fraud-detection-skill
+    git add skills/fraud-detection/
+    git commit -m "Add fraud-detection skill learned from session 2026-03-15"
+    ```
+  </Step>
+
+  <Step title="Agent opens a pull request">
+    The agent opens a PR describing the proposed change and the reasoning behind it. The PR title and body follow your team's conventions, but typically include:
+
+    - What changed (diff summary)
+    - Why (the reasoning or event that triggered the change)
+    - Any compliance implications (risk tier, relevant rules)
+
+    ```bash
+    gh pr create \
+      --title "Add fraud-detection skill" \
+      --body "Learned from session on 2026-03-15. Detects anomalous transaction patterns. Review SKILL.md for full instructions."
+    ```
+  </Step>
+
+  <Step title="Human reviews the diff">
+    A designated supervisor reviews the PR. Because the skill is a plain markdown file, the diff is readable in any GitHub, GitLab, or Bitbucket interface. No code deployment tools are needed.
+
+    ```bash
+    git diff main..agent/add-fraud-detection-skill
+    ```
+  </Step>
+
+  <Step title="Approve or request changes">
+    The reviewer approves the PR (change takes effect on merge) or requests modifications. The agent revises and pushes to the same branch.
+  </Step>
+
+  <Step title="Merge to main">
+    After approval, the branch merges to `main`. The next time the agent loads, it picks up the new skill. The full history of the review is preserved in git.
+
+    ```bash
+    git merge agent/add-fraud-detection-skill
+    git tag v1.3.0   # optionally tag the stable version
+    ```
+  </Step>
+</Steps>
+
+## Full example: compliance agent with HITL
+
+```yaml
+spec_version: "0.1.0"
+name: compliance-analyst
+version: 1.2.0
+description: Financial compliance analysis agent with full human oversight
+author: Acme Financial
+license: proprietary
+
+model:
+  preferred: claude-opus-4-6
+  constraints:
+    temperature: 0.1
+    max_tokens: 8192
+
+skills:
+  - regulatory-analysis
+  - document-review
+
+runtime:
+  max_turns: 50
+  timeout: 300
+
+compliance:
+  risk_tier: high
+  frameworks:
+    - finra
+    - federal_reserve
+    - sec
+  supervision:
+    designated_supervisor: chief-compliance-officer
+    review_cadence: weekly
+    human_in_the_loop: always
+    escalation_triggers:
+      - confidence_below: 0.85
+      - action_type: regulatory_filing
+      - action_type: credit_decision
+      - error_detected: true
+    override_capability: true
+    kill_switch: true
+  recordkeeping:
+    audit_logging: true
+    log_format: structured_json
+    retention_period: 7y
+    log_contents:
+      - prompts_and_responses
+      - tool_calls
+      - decision_pathways
+      - model_version
+      - timestamps
+    immutable: true
+```
+
+## Validating HITL configuration
+
+Run `gitagent validate --compliance` to check that your supervision configuration meets the requirements for your risk tier:
+
+```bash
+gitagent validate --compliance
+```
+
+For a full supervision audit report — supervisor assignment, review cadence, escalation triggers, kill switch status — run:
+
+```bash
+gitagent audit
+```
+
+<Tip>
+Add `gitagent validate --compliance` as a required CI check on your `main` branch. This ensures no PR can merge with a misconfigured supervision section. See the [CI/CD pattern](/patterns/cicd) for a full GitHub Actions workflow.
+</Tip>

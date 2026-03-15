@@ -1,0 +1,78 @@
+---
+title: "SOUL.md specification"
+description: "What SOUL.md must contain, the recommended sections, and how agent identity is loaded into every export format."
+---
+
+`SOUL.md` is a required file in every gitagent repository. It defines who the agent *is* — its identity, personality, values, tone, and domain expertise. Every export format (system prompts, Claude Code, OpenAI, CrewAI) reads `SOUL.md` and incorporates it into the agent's identity at runtime.
+
+## Requirements
+
+A valid `SOUL.md` must contain at least one non-empty paragraph. There is no maximum length, but concise identity descriptions are recommended for token efficiency.
+
+<Note>
+  `SOUL.md` is the only file whose absence causes a hard validation failure (alongside `agent.yaml`). Running `gitagent validate` on a repository without `SOUL.md` returns an error.
+</Note>
+
+## Recommended sections
+
+The spec recommends five sections for structured identity definitions. All are optional — only the non-empty paragraph requirement is normative.
+
+| Section | Purpose |
+|---------|--------|
+| **Core Identity** | What the agent is and its primary purpose |
+| **Communication Style** | Tone, formality, and verbosity preferences |
+| **Values & Principles** | What the agent prioritizes and how it resolves trade-offs |
+| **Domain Expertise** | Areas of specialized knowledge |
+| **Collaboration Style** | How it works with humans and other agents |
+
+## How SOUL.md is used
+
+When you run `gitagent export`, the contents of `SOUL.md` are embedded into the exported artifact:
+
+- **System prompt export** — SOUL.md is prepended to the system prompt
+- **Claude Code export** — SOUL.md becomes the agent's identity instructions
+- **OpenAI export** — SOUL.md is included in the system message
+- **CrewAI export** — SOUL.md becomes the agent's backstory and goal
+
+When `extends` is set in `agent.yaml`, the child's `SOUL.md` **replaces** the parent's entirely — there is no merging of identity files.
+
+## Full example
+
+```markdown
+# Soul
+
+## Core Identity
+I am a regulatory compliance analyst specializing in FINRA and SEC rules.
+
+## Communication Style
+Precise, formal, citation-heavy. I always reference specific rule numbers.
+
+## Values & Principles
+- Accuracy over speed
+- Conservative interpretation of ambiguous regulations
+- Transparency in reasoning
+
+## Domain Expertise
+- FINRA rules and regulatory notices
+- SEC regulations (Reg BI, Reg S-P, 17a-4)
+- Federal Reserve supervisory letters (SR 11-7, SR 23-4)
+- BSA/AML compliance
+
+## Collaboration Style
+I escalate uncertainty rather than guessing. I ask clarifying questions
+when requirements are ambiguous.
+```
+
+## Minimal valid example
+
+```markdown
+I am a helpful assistant that answers questions accurately and concisely.
+```
+
+This single paragraph satisfies the spec requirement.
+
+## Related files
+
+- [RULES.md](/spec/rules-md) — Hard behavioral constraints (separate from identity)
+- [DUTIES.md](/spec/duties-md) — Role and SOD boundaries
+- [agent.yaml](/spec/agent-yaml) — Manifest where `extends` inheritance is configured

@@ -1,0 +1,118 @@
+---
+title: gitagent info
+description: Display a formatted summary of an agent's configuration.
+---
+
+`gitagent info` reads `agent.yaml` and the surrounding directory structure, then prints a human-readable summary of every important field — identity, model, skills, tools, sub-agents, runtime, compliance, and a SOUL.md preview.
+
+## Synopsis
+
+```bash
+gitagent info [options]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir <dir>` | `.` | Agent directory to inspect |
+
+## What it displays
+
+| Section | Source | Details |
+|---------|--------|---------|
+| Name and version | `agent.yaml` | `name` and `version` as the heading |
+| Description | `agent.yaml` | `description` field |
+| Author | `agent.yaml` | `author` field, if set |
+| License | `agent.yaml` | `license` field, if set |
+| Model | `agent.yaml` | `preferred`, `fallback` models, and all `constraints` (temperature, max_tokens, etc.) |
+| Skills | `skills/` directory | Names of all subdirectories found in `skills/` |
+| Tools | `tools/` directory | Names of all `*.yaml` files found in `tools/` (without extension) |
+| Sub-agents | `agents/` directory | Names of all subdirectories and `*.md` files found in `agents/` |
+| Runtime | `agent.yaml` | `max_turns`, `temperature`, `timeout` |
+| Compliance | `agent.yaml` | `risk_tier`, frameworks, `human_in_the_loop`, supervisor, audit logging, retention period, model inventory ID, validation cadence, PII handling, data classification |
+| Tags | `agent.yaml` | `tags` list |
+| Soul preview | `SOUL.md` | First five lines of the file |
+
+## Example output
+
+```bash
+gitagent info -d ./examples/standard
+```
+
+```
+╔══════════════════════════════════════╗
+  code-review-agent v1.0.0
+  Automated code review agent with best-practice enforcement
+────────────────────────────
+  Author     gitagent-examples
+  License    MIT
+
+  Model
+  Preferred  claude-sonnet-4-5-20250929
+  Fallback   claude-haiku-4-5-20251001
+    temperature  0.2
+    max_tokens   4096
+
+  Skills
+    code-review
+
+  Tools
+    lint-check
+    complexity-analysis
+
+  Runtime
+  Max turns  20
+  Timeout    120s
+
+  Tags
+    code-review, developer-tools
+
+  Soul (preview)
+    # Soul
+
+    ## Core Identity
+    I am a code review specialist...
+    ...
+```
+
+```bash
+gitagent info -d ./examples/full
+```
+
+```
+  compliance-analyst v1.0.0
+  Financial compliance analysis agent
+────────────────────────────
+  Author     Acme Corp
+  License    MIT
+
+  Model
+  Preferred  claude-opus-4-6
+  Fallback   claude-sonnet-4-5-20250929
+
+  Compliance
+  Risk Tier           HIGH
+  Frameworks          finra, federal_reserve, sec
+  Human-in-the-loop   always
+  Supervisor          John Smith
+  Audit Logging       enabled
+  Retention           7y
+  Model Inventory ID  MRM-2024-001
+  Validation Cadence  quarterly
+  PII Handling        redact
+  Data Classification confidential
+```
+
+## Examples
+
+```bash
+# Inspect the agent in the current directory
+gitagent info
+
+# Inspect a specific agent directory
+gitagent info -d ./examples/standard
+
+# Inspect after cloning
+git clone https://github.com/user/my-agent && gitagent info -d ./my-agent
+```

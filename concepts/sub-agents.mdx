@@ -1,0 +1,148 @@
+---
+title: "Sub-agents"
+description: "Define, configure, and delegate to sub-agents in GitAgent — full directory format, lightweight file format, and delegation modes."
+---
+
+Sub-agents let you break a complex agent system into specialized components. A parent agent can delegate specific tasks to sub-agents, each with their own identity, skills, tools, and rules.
+
+## The agents/ directory
+
+Sub-agents live in the `agents/` directory. GitAgent supports two formats:
+
+```
+agents/
+├── fact-checker/        # Full sub-agent (directory)
+│   ├── agent.yaml
+│   ├── SOUL.md
+│   └── DUTIES.md
+└── summarizer.md        # Lightweight sub-agent (single file)
+```
+
+## Full sub-agent (directory format)
+
+A full sub-agent is a complete mini GitAgent repository inside the `agents/<name>/` directory. It has its own `agent.yaml` and `SOUL.md`, and can have any of the optional directories (`skills/`, `tools/`, `hooks/`, etc.).
+
+```yaml
+# agents/fact-checker/agent.yaml
+spec_version: "0.1.0"
+name: fact-checker
+version: 1.0.0
+description: Verifies factual claims against authoritative regulatory sources
+model:
+  preferred: claude-haiku-4-5-20251001
+  constraints:
+    temperature: 0.0
+    max_tokens: 2048
+runtime:
+  max_turns: 10
+  timeout: 60
+tags:
+  - verification
+  - fact-checking
+```
+
+```markdown
+# agents/fact-checker/SOUL.md
+
+I verify factual claims by consulting authoritative regulatory sources. I check rule
+numbers, effective dates, and regulatory citations for accuracy. I flag unverifiable
+claims explicitly and never assume correctness without verification.
+```
+
+## Lightweight sub-agent (single file format)
+
+For simple sub-agents, you can define everything in a single `.md` file with YAML frontmatter. The frontmatter takes the same fields as `agent.yaml`.
+
+```markdown
+# agents/summarizer.md
+---
+name: summarizer
+description: Produces concise summaries of long documents
+model:
+  preferred: claude-haiku-4-5-20251001
+delegation:
+  mode: auto
+  triggers:
+    - summarize_detected
+    - "summarize this"
+---
+
+# Summarizer
+
+You produce concise, accurate summaries. Preserve key facts, dates, and figures.
+Never introduce information not present in the source. Output in bullet-point format
+unless the user requests prose.
+```
+
+## Registering sub-agents in agent.yaml
+
+Declare sub-agents in the parent's `agent.yaml` under the `agents` key:
+
+```yaml
+agents:
+  fact-checker:
+    description: Verifies factual claims against authoritative sources
+    delegation:
+      mode: auto
+      triggers:
+        - factual_claim_detected
+  summarizer:
+    description: Produces concise summaries of long documents
+    delegation:
+      mode: explicit
+
+delegation:
+  mode: auto
+  router: semantic
+```
+
+## Delegation modes
+
+<ParamField path="delegation.mode" type="string">
+  How the parent agent decides when to delegate:
+  - **`auto`** — The agent automatically delegates based on `triggers` or semantic routing
+  - **`explicit`** — Delegation only happens when the user or a workflow explicitly requests it
+  - **`router`** — All tasks are routed through a designated router sub-agent
+</ParamField>
+
+<ParamField path="delegation.router" type="string">
+  When `mode` is `router`, the name of the sub-agent that handles routing decisions.
+</ParamField>
+
+<ParamField path="delegation.triggers" type="string[]">
+  For `auto` mode, a list of trigger strings or event names. When the agent detects a match, it delegates to the sub-agent. Can be natural language phrases or structured event names like `factual_claim_detected`.
+</ParamField>
+
+## DUTIES.md for sub-agents
+
+In regulated systems, each sub-agent should have its own `DUTIES.md` that declares:
+
+- **Role** — This agent's assigned role (e.g. `reviewer`)
+- **Permissions** — What actions this agent can take
+- **Boundaries** — What this agent must and must not do
+- **Handoff participation** — Where this agent sits in handoff chains
+
+```markdown
+# agents/fact-checker/DUTIES.md
+
+## Role
+This agent is assigned the **Reviewer** role.
+
+## Permissions
+- review: Evaluate analysis outputs for accuracy
+- approve: Approve verified findings
+- reject: Reject findings that cannot be verified
+
+## Boundaries
+- Must not create original analysis — only verify existing claims
+- Must not approve findings with unverifiable citations
+- Must cite the authoritative source for every verified claim
+
+## Handoff Participation
+This agent participates in the Regulatory Filing and Customer Communication handoffs
+as the Reviewer. Approval required before proceeding to the next step.
+```
+
+<Card title="Segregation of duties" icon="shield-halved" href="/compliance/segregation-of-duties">
+  Learn how DUTIES.md integrates with the full SOD policy in agent.yaml
+</Card>

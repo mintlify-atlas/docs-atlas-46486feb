@@ -1,0 +1,58 @@
+---
+title: "Knowledge index schema"
+description: "The knowledge/index.yaml schema — document entries, tags, priority levels, and always-load behavior for reference documents."
+---
+
+The `knowledge/` directory holds reference documents the agent can consult during a session. The `knowledge/index.yaml` file catalogs these documents with retrieval hints. The JSON schema is at [`spec/schemas/knowledge.schema.json`](https://github.com/open-gitagent/gitagent/blob/main/spec/schemas/knowledge.schema.json).
+
+Documents in `knowledge/` can be any readable format: `.md`, `.csv`, `.pdf`, or plain text.
+
+## index.yaml structure
+
+`knowledge/index.yaml` has a single top-level `documents` array.
+
+## Document entry fields
+
+<ParamField path="documents[].path" type="string" required>
+  File path relative to `knowledge/`.
+</ParamField>
+
+<ParamField path="documents[].tags" type="string[]">
+  Tags for retrieval and categorization. Used by the runtime to select relevant documents for a given task.
+</ParamField>
+
+<ParamField path="documents[].priority" type="enum">
+  Retrieval priority. One of: `high`, `medium`, `low`. Higher priority documents are preferred when context space is limited.
+</ParamField>
+
+<ParamField path="documents[].always_load" type="boolean">
+  Whether to include this document in every session context. Default: `false`. Documents with `always_load: true` are incorporated into the system prompt on every session start, regardless of task relevance.
+</ParamField>
+
+<ParamField path="documents[].description" type="string">
+  What this document contains. Used to help the runtime decide when to retrieve it.
+</ParamField>
+
+## always_load behavior
+
+Documents marked `always_load: true` are included in the system prompt at the start of every session. Use this sparingly — always-load documents consume tokens on every invocation. Reserve `always_load: true` for short, critical reference documents that the agent always needs (e.g., a one-page FINRA rule summary, an internal glossary).
+
+<Warning>
+  Always-loaded documents increase the base token cost of every session. For large documents, set `always_load: false` and rely on tag-based retrieval instead.
+</Warning>
+
+## Full example
+
+```yaml
+documents:
+  - path: finra-rules-summary.md
+    tags: [finra, rules, reference]
+    priority: high
+    always_load: true
+  - path: sr-11-7-guide.pdf
+    tags: [federal-reserve, model-risk]
+    priority: medium
+  - path: compliance-procedures.csv
+    tags: [procedures, internal]
+    priority: low
+```

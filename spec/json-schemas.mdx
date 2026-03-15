@@ -1,0 +1,194 @@
+---
+title: "JSON schemas reference"
+description: "All 10 JSON schemas in spec/schemas/ — what each validates, key fields, and how to use them for local validation."
+---
+
+All gitagent schemas use JSON Schema draft 2020-12 and are located in [`spec/schemas/`](https://github.com/open-gitagent/gitagent/tree/main/spec/schemas) in the gitagent repository. Run `gitagent validate` to validate any agent against these schemas.
+
+## Schema inventory
+
+<AccordionGroup>
+  <Accordion title="agent-yaml.schema.json">
+    **Validates:** `agent.yaml`
+
+    The primary manifest schema. Enforces required fields (`name`, `version`, `description`), naming patterns, compliance config structure, and all optional sections.
+
+    Key features:
+    - Pattern enforcement for `name` (`^[a-z][a-z0-9-]*$`) and `version` (semver)
+    - Conditional validation: `high`/`critical` `risk_tier` requires `supervision` and `recordkeeping`
+    - Full `$defs` for `compliance_config`, `supervision_config`, `recordkeeping_config`, `model_risk_config`, `data_governance_config`, `communications_config`, `vendor_management_config`, `segregation_of_duties_config`
+    - Typed escalation triggers using `oneOf`
+    - `additionalProperties: false` throughout to catch typos
+  </Accordion>
+
+  <Accordion title="tool.schema.json">
+    **Validates:** `tools/*.yaml`
+
+    Tool definition schema. Compatible with MCP tool definitions.
+
+    Key features:
+    - Required: `name`, `description`, `input_schema`
+    - `implementation.type` supports `script`, `mcp_server`, `http`
+    - Conditional `allOf` rules: `script` requires `path` + `runtime`; `http` requires `url` + `method`; `mcp_server` requires `url`
+    - Supported runtimes: `node`, `python3`, `bash`, `deno`, `ruby`, `go`
+    - Annotations: `requires_confirmation`, `read_only`, `cost`, `compliance_sensitive`, `idempotent`
+  </Accordion>
+
+  <Accordion title="hooks.schema.json">
+    **Validates:** `hooks/hooks.yaml`
+
+    Hooks configuration schema.
+
+    Key features:
+    - Top-level `hooks` object with seven event keys
+    - Each hook entry requires `script` and `description`
+    - Optional `timeout` (default 30s), `compliance` flag, and `fail_open` flag
+    - `additionalProperties: false` on the `hooks` object prevents unknown event names
+  </Accordion>
+
+  <Accordion title="hook-io.schema.json">
+    **Validates:** Hook script stdin/stdout JSON
+
+    Protocol schema for the JSON I/O contract between the runtime and hook scripts.
+
+    Key features:
+    - `hook_input` definition: `event`, `timestamp`, `data`, `session` all required
+    - `hook_output` definition: `action` required (`allow`, `block`, `modify`)
+    - Audit metadata fields: `logged`, `log_id`, `timestamp`, `escalated`, `finalized`
+    - Available as `$defs/hook_input` and `$defs/hook_output` for selective use
+  </Accordion>
+
+  <Accordion title="workflow.schema.json">
+    **Validates:** `workflows/*.yaml`
+
+    Workflow definition schema.
+
+    Key features:
+    - Required: `name`, `steps` (minimum 1 step)
+    - Each step requires `id` and `action`
+    - Inputs support six types: `string`, `number`, `boolean`, `file`, `object`, `array`
+    - Step-level `retry` (with `max_attempts` and `backoff`) and `compliance` fields
+    - Error handling: `on_step_failure` supports `abort`, `skip`, `retry`, `escalate`
+  </Accordion>
+
+  <Accordion title="memory.schema.json">
+    **Validates:** `memory/memory.yaml`
+
+    Memory configuration schema.
+
+    Key features:
+    - `layers` array: each layer requires `name` and `path`
+    - Layer `format`: `markdown`, `yaml`, `json`
+    - Layer `rotation`: `daily`, `weekly`, `monthly`, `quarterly`, `yearly`
+    - `update_triggers`: `on_session_end`, `on_explicit_save`, `on_milestone`, `periodic`
+    - `archive_policy.compress_after` pattern: `^\d+[dmy]$`
+  </Accordion>
+
+  <Accordion title="skill.schema.json">
+    **Validates:** YAML frontmatter in `skills/*/SKILL.md`
+
+    Adopts the Agent Skills open standard (agentskills.io).
+
+    Key features:
+    - Required: `name` (max 64 chars, strict kebab-case pattern), `description` (max 1024 chars)
+    - `metadata` values must all be strings (Agent Skills standard requirement)
+    - `compatibility` max 500 chars
+    - `additionalProperties: false` — no extra frontmatter keys outside the standard
+  </Accordion>
+
+  <Accordion title="marketplace.schema.json">
+    **Validates:** `marketplace.json` (skill distribution manifest for registry providers)
+
+    Skill package manifest for publishing to and installing from registries.
+
+    Key features:
+    - Required: `name`, `version`, `description`, `skill`
+    - `skill` object embeds the Agent Skills frontmatter
+    - Optional registry metadata: `registry`, `published_at`, `downloads`
+    - `files` array lists included package files
+  </Accordion>
+
+  <Accordion title="knowledge.schema.json">
+    **Validates:** `knowledge/index.yaml`
+
+    Knowledge index schema.
+
+    Key features:
+    - Required: `documents` array
+    - Each document requires `path`
+    - `priority`: `low`, `medium`, `high`
+    - `always_load` default: `false`
+    - `tags` uses `uniqueItems: true`
+  </Accordion>
+
+  <Accordion title="config.schema.json">
+    **Validates:** `config/default.yaml` and `config/<env>.yaml`
+
+    Environment configuration schema. Configs are deep-merged: `default.yaml` ← `<env>.yaml`.
+
+    Key features:
+    - `log_level`: `debug`, `info`, `warn`, `error`
+    - `compliance_mode` and `audit_logging` boolean overrides
+    - `model_override` and `temperature_override` runtime overrides
+    - `timeout_override` in seconds
+    - `env_vars` string map for tool script environment variables
+  </Accordion>
+</AccordionGroup>
+
+## Using schemas for local validation
+
+### With gitagent CLI
+
+```bash
+# Validate spec compliance
+gitagent validate
+
+# Validate with regulatory checks
+gitagent validate --compliance
+```
+
+### With ajv (Node.js)
+
+```bash
+npm install -g ajv-cli
+
+# Validate agent.yaml
+ajv validate -s spec/schemas/agent-yaml.schema.json -d agent.yaml
+
+# Validate a tool definition
+ajv validate -s spec/schemas/tool.schema.json -d tools/my-tool.yaml
+```
+
+### With check-jsonschema (Python)
+
+```bash
+pip install check-jsonschema
+
+# Validate agent.yaml
+check-jsonschema --schemafile spec/schemas/agent-yaml.schema.json agent.yaml
+
+# Validate hooks.yaml
+check-jsonschema --schemafile spec/schemas/hooks.schema.json hooks/hooks.yaml
+```
+
+### With VS Code
+
+Add this to your `.vscode/settings.json` to enable inline validation:
+
+```json
+{
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/open-gitagent/gitagent/main/spec/schemas/agent-yaml.schema.json": "agent.yaml",
+    "https://raw.githubusercontent.com/open-gitagent/gitagent/main/spec/schemas/tool.schema.json": "tools/*.yaml",
+    "https://raw.githubusercontent.com/open-gitagent/gitagent/main/spec/schemas/hooks.schema.json": "hooks/hooks.yaml",
+    "https://raw.githubusercontent.com/open-gitagent/gitagent/main/spec/schemas/workflow.schema.json": "workflows/*.yaml",
+    "https://raw.githubusercontent.com/open-gitagent/gitagent/main/spec/schemas/memory.schema.json": "memory/memory.yaml",
+    "https://raw.githubusercontent.com/open-gitagent/gitagent/main/spec/schemas/knowledge.schema.json": "knowledge/index.yaml",
+    "https://raw.githubusercontent.com/open-gitagent/gitagent/main/spec/schemas/config.schema.json": "config/*.yaml"
+  }
+}
+```
+
+## Integration with gitagent validate
+
+`gitagent validate` runs schema validation plus the normative rules defined in [validation rules](/spec/validation-rules). Schema validation alone catches structural errors; the full validate command also checks referential integrity (skills exist, tools exist, hook scripts exist) and compliance-specific rules.

@@ -1,0 +1,239 @@
+---
+title: "Segregation of duties"
+description: "How to define roles, conflict matrices, agent assignments, isolation policies, and handoff workflows for multi-agent SOD compliance in GitAgent."
+---
+
+Segregation of duties (SOD) is the principle that no single actor should control a critical process end-to-end. In multi-agent systems, this means different agents must hold different roles — the agent that initiates an action cannot be the same agent that approves or audits it.
+
+GitAgent makes SOD a first-class configuration concern. You declare roles, conflicts, and assignments in `agent.yaml`, and the validator catches violations before deployment.
+
+## What SOD means for AI agents
+
+In traditional financial services, SOD separates the roles of the person who initiates a transaction (maker), the person who approves it (checker), the person who executes it (executor), and the person who audits it (auditor). The same separation applies to AI agents:
+
+- An agent that generates a credit recommendation should not be the same agent that approves it
+- An agent that drafts a regulatory filing should not be the one that reviews it for accuracy
+- An agent that executes a trade should not be the one that audits the execution log
+
+GitAgent's SOD implementation is inspired by the [FINOS AI Governance Framework](https://air-governance-framework.finos.org/mitigations/mi-22_multi-agent-isolation-and-segmentation.html) and the SR 11-7 requirement for independent review.
+
+## The four standard roles
+
+| Role | Default permissions | Responsibility |
+|------|--------------------|-----------------|
+| `maker` | `create`, `submit` | Initiates actions, creates proposals, generates outputs |
+| `checker` | `review`, `approve`, `reject` | Reviews maker outputs, approves or rejects before execution |
+| `executor` | `execute` | Executes approved actions |
+| `auditor` | `audit`, `report` | Reviews completed actions for compliance, maintains audit trail |
+
+These are convention-based names. You can define any roles with any IDs and permissions — the four above are the recommended defaults.
+
+## Conflict matrix
+
+The `conflicts` array declares which role pairs cannot be held by the same agent. Each entry is a pair of role IDs.
+
+```yaml
+compliance:
+  segregation_of_duties:
+    conflicts:
+      - [maker, checker]     # Maker cannot approve own work
+      - [maker, auditor]     # Maker cannot audit own work
+      - [executor, checker]  # Executor cannot approve what they execute
+      - [executor, auditor]  # Executor cannot audit own execution
+```
+
+During `gitagent validate --compliance`, the validator checks every agent in `assignments` against every conflict pair. If any agent holds both roles in a conflict pair:
+
+- In `strict` enforcement mode: **validation fails** with a `[SOD]` error
+- In `advisory` enforcement mode: **validation warns** but does not fail
+
+<Warning>
+  A `segregation_of_duties` block with no `conflicts` defined provides no enforcement value. The validator warns: "No conflicts defined — segregation_of_duties without conflict rules has no enforcement value."
+</Warning>
+
+## Assignments
+
+The `assignments` map binds role IDs to agent names. Agent names correspond to keys in the `agents` section of `agent.yaml`.
+
+```yaml
+compliance:
+  segregation_of_duties:
+    assignments:
+      loan-originator: [maker]
+      credit-reviewer: [checker]
+      loan-processor: [executor]
+      compliance-auditor: [auditor]
+```
+
+Every role should be assigned to at least one agent. The validator warns for any defined role that has no assignment. Every assignment must reference a role ID defined in the `roles` array — assignments referencing undefined roles fail validation.
+
+## Isolation
+
+The `isolation` block declares how state and credentials are separated between roles:
+
+```yaml
+compliance:
+  segregation_of_duties:
+    isolation:
+      state: full          # full | shared | none
+      credentials: separate  # separate | shared
+```
+
+| `isolation.state` | Meaning |
+|-------------------|---------|
+| `full` | Each agent operates with its own memory and state. No agent may read or modify another agent's working memory. |
+| `shared` | Agents share a common state space. |
+| `none` | No state isolation. |
+
+| `isolation.credentials` | Meaning |
+|-------------------------|---------|
+| `separate` | Each role has its own credential scope. |
+| `shared` | Agents share credentials. |
+
+For `high` and `critical` risk tiers, the validator recommends `state: full` and `credentials: separate` — both produce warnings if absent.
+
+## Handoff workflows
+
+Handoffs declare which actions require multi-role participation before execution. Each handoff must include at least two distinct roles:
+
+```yaml
+compliance:
+  segregation_of_duties:
+    handoffs:
+      - action: credit_decision
+        required_roles: [maker, checker]
+        approval_required: true
+      - action: loan_disbursement
+        required_roles: [maker, checker, executor]
+        approval_required: true
+      - action: regulatory_filing
+        required_roles: [analyst, reviewer]
+        approval_required: true
+```
+
+Handoff `required_roles` must reference defined role IDs. A handoff with fewer than two distinct roles fails validation with a `[SOD]` error.
+
+The `gitagent audit` report lists all handoff requirements in section 8, including the role chain and whether approval is required.
+
+## Enforcement modes
+
+| Mode | Behavior |
+|------|-----------|
+| `strict` | SOD violations block deployment. `gitagent validate --compliance` exits with code 1. |
+| `advisory` | SOD violations produce warnings. Validation still passes. |
+
+```yaml
+compliance:
+  segregation_of_duties:
+    enforcement: strict  # strict | advisory
+```
+
+For `high` and `critical` risk tiers, the validator recommends `strict` enforcement and warns if `advisory` is used.
+
+## DUTIES.md
+
+Beyond `agent.yaml`, GitAgent uses a `DUTIES.md` file to document SOD policy in human-readable form. It exists at two levels:
+
+**Root level `DUTIES.md`** — Documents the system-wide SOD policy: all roles, the conflict matrix, handoff workflows, isolation policy, and enforcement mode. This is the narrative equivalent of the `segregation_of_duties` block in `agent.yaml` — readable by compliance teams, auditors, and regulators.
+
+```markdown
+# Duties
+
+## Roles
+
+| Role     | Agent               | Permissions           |
+|----------|---------------------|-----------------------|
+| Analyst  | compliance-analyst  | create, submit        |
+| Reviewer | fact-checker        | review, approve, reject |
+| Auditor  | (unassigned)        | audit, report         |
+
+## Conflict Matrix
+
+- **Analyst <-> Reviewer** — The agent that produces findings cannot approve them
+- **Analyst <-> Auditor** — The agent that produces findings cannot audit them
+
+## Enforcement
+
+Enforcement mode is **strict**.
+```
+
+**Per-agent `agents/<name>/DUTIES.md`** — Declares this specific agent's assigned role, permissions, must/must-not boundaries, and where it sits in handoff chains. Each sub-agent's DUTIES.md answers: what is my role, what can I do, and who do I hand off to.
+
+## Full segregation_of_duties example
+
+From the spec and `examples/full/agent.yaml`:
+
+```yaml
+compliance:
+  segregation_of_duties:
+    roles:
+      - id: analyst
+        description: Performs regulatory analysis and generates findings
+        permissions:
+          - create
+          - submit
+      - id: reviewer
+        description: Reviews analysis for accuracy and completeness
+        permissions:
+          - review
+          - approve
+          - reject
+      - id: auditor
+        description: Audits completed reviews and maintains compliance trail
+        permissions:
+          - audit
+          - report
+
+    conflicts:
+      - [analyst, reviewer]
+      - [analyst, auditor]
+      - [reviewer, auditor]
+
+    assignments:
+      compliance-analyst: [analyst]
+      fact-checker: [reviewer]
+
+    isolation:
+      state: full
+      credentials: separate
+
+    handoffs:
+      - action: regulatory_filing
+        required_roles: [analyst, reviewer]
+        approval_required: true
+      - action: customer_communication
+        required_roles: [analyst, reviewer]
+        approval_required: true
+
+    enforcement: strict
+```
+
+## Validation rules for SOD
+
+| Check | Severity |
+|-------|----------|
+| `roles` must define at least 2 roles with unique IDs | Error |
+| `conflicts` pairs must reference defined role IDs | Error |
+| A role cannot conflict with itself | Error |
+| `assignments` must reference defined role IDs | Error |
+| No agent in `assignments` may hold roles that appear together in `conflicts` | Error (strict) / Warning (advisory) |
+| `handoffs.required_roles` must reference defined role IDs | Error |
+| `handoffs.required_roles` must include at least 2 distinct roles | Error |
+| Every defined role should be assigned to at least one agent | Warning |
+| Assigned agents should exist in the `agents` section | Warning |
+| `high`/`critical` tier recommends `enforcement: strict` | Warning |
+| `high`/`critical` tier recommends `isolation.state: full` | Warning |
+| `high`/`critical` tier recommends `isolation.credentials: separate` | Warning |
+| No `conflicts` defined in `segregation_of_duties` block | Warning |
+| Multi-agent (`2+`) `high`/`critical` system without SOD configured | Warning |
+
+## SOD references
+
+From spec section 20:
+
+| Document | Subject | `agent.yaml` field |
+|----------|---------|-------------------|
+| FINOS AI Governance Framework | Multi-Agent Isolation & Segmentation | `compliance.segregation_of_duties` |
+| SOC 2 Type II | Logical Access Controls | `segregation_of_duties.isolation` |
+| SR 11-7 Section IV | Independent Review | `segregation_of_duties.conflicts` (maker/checker separation) |
+| FINRA 3110 | Supervisory Systems (duty separation) | `segregation_of_duties.handoffs` |

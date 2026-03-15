@@ -1,0 +1,155 @@
+---
+title: "Workflow schema"
+description: "The workflows/*.yaml schema — inputs, steps, expression syntax, error handling, and a complete regulatory review example."
+---
+
+Workflows define multi-step procedures stored in `workflows/`. They can be written as structured YAML (`workflows/*.yaml`) or as narrative markdown (`workflows/*.md`). The JSON schema for structured workflows is at [`spec/schemas/workflow.schema.json`](https://github.com/open-gitagent/gitagent/blob/main/spec/schemas/workflow.schema.json).
+
+## Top-level fields
+
+<ParamField path="name" type="string" required>
+  Workflow identifier.
+</ParamField>
+
+<ParamField path="steps" type="object[]" required>
+  Array of step definitions. Minimum 1 step.
+</ParamField>
+
+<ParamField path="description" type="string">
+  What this workflow does.
+</ParamField>
+
+<ParamField path="version" type="string">
+  Semantic version. Pattern: `^X.Y.Z[-prerelease][+build]$`.
+</ParamField>
+
+<ParamField path="inputs" type="object[]">
+  Workflow input parameter definitions. Each input has `name`, `type`, and optional `description`, `required`, and `default`.
+</ParamField>
+
+<ParamField path="outputs" type="object[]">
+  Workflow output definitions. Each output has `name`, `type`, and optional `description`.
+</ParamField>
+
+<ParamField path="error_handling" type="object">
+  Workflow-level error handling policy.
+</ParamField>
+
+## Input fields
+
+Each entry in `inputs` supports:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Input parameter name |
+| `type` | enum | Yes | One of: `string`, `number`, `boolean`, `file`, `object`, `array` |
+| `description` | string | No | Human-readable description |
+| `required` | boolean | No | Whether this input is required. Default: `true` |
+| `default` | any | No | Default value if not provided |
+
+## Step fields
+
+Each entry in `steps` supports:
+
+<ParamField path="steps[].id" type="string" required>
+  Unique step identifier. Used for `depends_on` references and expression syntax.
+</ParamField>
+
+<ParamField path="steps[].action" type="string" required>
+  What this step does — a natural language description or tool reference.
+</ParamField>
+
+<ParamField path="steps[].skill" type="string">
+  Skill to use for this step.
+</ParamField>
+
+<ParamField path="steps[].tool" type="string">
+  Tool to invoke for this step.
+</ParamField>
+
+<ParamField path="steps[].agent" type="string">
+  Sub-agent to delegate this step to.
+</ParamField>
+
+<ParamField path="steps[].inputs" type="object">
+  Input parameters for this step. Supports `${{ }}` expression syntax.
+</ParamField>
+
+<ParamField path="steps[].outputs" type="string[]">
+  Named outputs from this step. Referenced by subsequent steps using expression syntax.
+</ParamField>
+
+<ParamField path="steps[].depends_on" type="string[]">
+  Step IDs that must complete before this step runs.
+</ParamField>
+
+<ParamField path="steps[].conditions" type="string[]">
+  Conditions that must be true to execute this step. Supports `${{ }}` expression syntax.
+</ParamField>
+
+<ParamField path="steps[].retry" type="object">
+  Retry configuration. Fields: `max_attempts` (integer, minimum 1) and `backoff` (`linear` or `exponential`).
+</ParamField>
+
+<ParamField path="steps[].compliance" type="object">
+  Step-level compliance settings. Fields: `requires_approval` (boolean) and `audit_level` (`none`, `basic`, `detailed`, `full`).
+</ParamField>
+
+## Expression syntax
+
+Step inputs and conditions support `${{ }}` expressions to reference previous step outputs:
+
+```yaml
+inputs:
+  rules: ${{ steps.classify.outputs.applicable_rules }}
+conditions:
+  - ${{ steps.analyze.outputs.findings_count > 0 }}
+```
+
+The pattern `${{ steps.<step_id>.outputs.<output_name> }}` reads a named output from a completed step.
+
+## Error handling
+
+<ParamField path="error_handling.on_step_failure" type="enum">
+  Action to take when a step fails. One of: `abort` (stop the workflow), `skip` (skip the failed step and continue), `retry` (retry the step), `escalate` (escalate to a human). Default: `abort`.
+</ParamField>
+
+<ParamField path="error_handling.escalation_target" type="string">
+  Who to escalate to on failure.
+</ParamField>
+
+## Full example
+
+```yaml
+name: regulatory-review
+description: Complete regulatory review workflow
+version: 1.0.0
+inputs:
+  - name: document
+    type: file
+    required: true
+  - name: framework
+    type: string
+    default: finra
+steps:
+  - id: classify
+    action: Classify document type and applicable regulations
+    skill: regulatory-analysis
+    outputs: [doc_type, applicable_rules]
+  - id: analyze
+    action: Analyze document against applicable rules
+    depends_on: [classify]
+    skill: regulatory-analysis
+    inputs:
+      rules: ${{ steps.classify.outputs.applicable_rules }}
+  - id: report
+    action: Generate compliance report
+    depends_on: [analyze]
+    skill: report-generation
+    conditions:
+      - ${{ steps.analyze.outputs.findings_count > 0 }}
+```
+
+## Narrative workflows
+
+Workflows can also be written as plain markdown files in `workflows/*.md`. Narrative workflows have no strict schema but can reference skills, tools, and agents by name in their instructions. They are loaded as contextual guidance rather than executed programmatically.

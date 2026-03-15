@@ -1,0 +1,308 @@
+---
+title: "Audit report"
+description: "What `gitagent audit` generates — all ten report sections, pass/fail/warning indicators, example output, and guidance on using the report in a compliance program."
+---
+
+`gitagent audit` generates a section-by-section compliance checklist against your agent's configuration. Unlike `gitagent validate --compliance`, which is a pass/fail gate, the audit report is a reporting tool designed for compliance teams, model risk committees, and regulators.
+
+## What the audit command generates
+
+Running `gitagent audit` (or `gitagent audit -d ./my-agent`) reads `agent.yaml` and produces a structured report with ten sections. Each check displays one of three indicators:
+
+| Indicator | Meaning |
+|-----------|---------|
+| `✔` (pass) | The control is configured and active |
+| `⚠` (warning) | The control is absent, incomplete, or set to a value that may not meet requirements |
+| `✖` (error) | A required control is missing (only shown when a framework explicitly requires it) |
+
+The report always completes — it never exits with a non-zero code. It ends with a disclaimer that the report is informational and does not constitute a legal compliance assessment.
+
+## Report sections
+
+### Section 1: Risk classification
+
+Displays the agent's `risk_tier` and the list of applicable `frameworks`.
+
+```
+1. Risk Classification
+Risk Tier    : HIGH
+Frameworks   : finra, federal_reserve, sec, cfpb
+```
+
+### Section 2: Supervision (FINRA Rule 3110)
+
+Checks the `supervision` section:
+
+| Check | Passes when |
+|-------|-------------|
+| Designated supervisor assigned | `supervision.designated_supervisor` is set |
+| Review cadence defined | `supervision.review_cadence` is set |
+| Human-in-the-loop configured | `human_in_the_loop` is set and not `none` |
+| Escalation triggers defined | `escalation_triggers` array has at least one entry |
+| Override capability enabled | `override_capability: true` |
+| Kill switch enabled | `kill_switch: true` |
+| HITL is `always` or `conditional` (high/critical only) | `human_in_the_loop` is `always` or `conditional` |
+
+### Section 3: Recordkeeping (FINRA Rule 4511 / SEC 17a-4)
+
+Checks the `recordkeeping` section:
+
+| Check | Passes when |
+|-------|-------------|
+| Audit logging enabled | `audit_logging: true` |
+| Log format specified | `log_format` is set |
+| Retention period defined | `retention_period` is set |
+| Prompt/response logging | `log_contents` includes `prompts_and_responses` |
+| Tool call logging | `log_contents` includes `tool_calls` |
+| Decision pathway logging | `log_contents` includes `decision_pathways` |
+| Model version tracking | `log_contents` includes `model_version` |
+| Timestamp logging | `log_contents` includes `timestamps` |
+| Immutable logs | `immutable: true` |
+
+Also checks retention minimums: warns if below `6y` for FINRA agents or `3y` for SEC agents.
+
+### Section 4: Model Risk Management (SR 11-7)
+
+Checks the `model_risk` section:
+
+| Check | Passes when |
+|-------|-------------|
+| Model inventory ID assigned | `inventory_id` is set |
+| Validation cadence defined | `validation_cadence` is set |
+| Validation type specified | `validation_type` is set |
+| Conceptual soundness documented | `conceptual_soundness` is set |
+| Ongoing monitoring enabled | `ongoing_monitoring: true` |
+| Outcomes analysis enabled | `outcomes_analysis: true` |
+| Drift detection enabled | `drift_detection: true` |
+
+If `model_risk` is absent and `federal_reserve` is in `frameworks`, the section outputs an error message.
+
+### Section 5: Data governance (Reg S-P, CFPB)
+
+Checks the `data_governance` section:
+
+| Check | Passes when |
+|-------|-------------|
+| PII handling policy defined | `pii_handling` is set |
+| PII handling is restrictive | `pii_handling` is not `allow` |
+| Data classification set | `data_classification` is set |
+| Consent requirement configured | `consent_required` is set (any value) |
+| Cross-border assessment done | `cross_border` is set (any value) |
+| Bias testing enabled | `bias_testing: true` |
+| LDA search configured | `lda_search` is set (any value) |
+
+### Section 6: Communications compliance (FINRA Rule 2210)
+
+Checks the `communications` section:
+
+| Check | Passes when |
+|-------|-------------|
+| Communication type classified | `type` is set |
+| Fair and balanced enforced | `fair_balanced: true` |
+| No misleading enforced | `no_misleading: true` |
+| Pre-review requirement assessed | `pre_review_required` is set (any value) |
+| Disclosure requirements assessed | `disclosures_required` is set (any value) |
+
+When `type` is `retail` and `pre_review_required` is not set, an additional warning is issued citing FINRA 2210(b)(1).
+
+### Section 7: Vendor management (SR 23-4)
+
+Checks the `vendor_management` section:
+
+| Check | Passes when |
+|-------|-------------|
+| Due diligence complete | `due_diligence_complete: true` |
+| SOC report requirement assessed | `soc_report_required` is set (any value) |
+| Vendor AI notification required | `vendor_ai_notification: true` |
+| Subcontractor assessment done | `subcontractor_assessment: true` |
+
+If `vendor_management` is absent but the agent has `dependencies`, the section warns that vendor management should be configured.
+
+### Section 8: Segregation of duties
+
+Checks the `segregation_of_duties` section:
+
+| Check | Passes when |
+|-------|-------------|
+| Roles defined (≥2) | `roles` array has at least 2 entries |
+| Conflict matrix defined | `conflicts` array has at least one entry |
+| Role assignments configured | `assignments` has at least one entry |
+| State isolation configured | `isolation.state` is set |
+| State isolation is full | `isolation.state: full` |
+| Credential segregation configured | `isolation.credentials` is set |
+| Credentials are separate | `isolation.credentials: separate` |
+| Handoff workflows defined | `handoffs` array has at least one entry |
+| Enforcement is strict | `enforcement: strict` |
+
+Also lists all role assignments and conflict rules, and explicitly checks for SOD violations (any agent holding two conflicting roles). If violations are found, they are printed with an `✖` prefix.
+
+### Section 9: Compliance artifacts
+
+Checks that required compliance files exist on disk:
+
+| Check | Passes when |
+|-------|-------------|
+| `compliance/` directory exists | Directory present |
+| `compliance/regulatory-map.yaml` exists | File present |
+| `compliance/validation-schedule.yaml` exists | File present |
+| `compliance/risk-assessment.md` exists | File present |
+| `RULES.md` exists | File present |
+
+### Section 10: Audit hooks
+
+Checks that lifecycle hooks are configured for audit trail purposes:
+
+| Check | Passes when |
+|-------|-------------|
+| `hooks/hooks.yaml` exists | File present |
+| Compliance hooks configured | `hooks.yaml` contains `compliance: true` on at least one hook |
+
+## Example report output
+
+```bash
+gitagent audit -d ./examples/full
+```
+
+```
+Compliance Audit Report
+Agent    : compliance-analyst v1.0.0
+Date     : 2026-03-15
+────────────────────────────────────────
+
+1. Risk Classification
+Risk Tier    : HIGH
+Frameworks   : finra, federal_reserve, sec, cfpb
+
+2. Supervision (FINRA Rule 3110)
+  ✔ Designated supervisor assigned
+  ✔ Review cadence defined
+  ✔ Human-in-the-loop configured
+  ✔ Escalation triggers defined
+  ✔ Override capability enabled
+  ✔ Kill switch enabled
+  ✔ HITL is "always" or "conditional" for high/critical risk
+
+3. Recordkeeping (FINRA Rule 4511 / SEC 17a-4)
+  ✔ Audit logging enabled
+  ✔ Log format specified
+  ✔ Retention period defined
+  ✔ Prompt/response logging
+  ✔ Tool call logging
+  ✔ Decision pathway logging
+  ✔ Model version tracking
+  ✔ Timestamp logging
+  ✔ Immutable logs
+
+4. Model Risk Management (SR 11-7)
+  ✔ Model inventory ID assigned
+  ✔ Validation cadence defined
+  ✔ Validation type specified
+  ✔ Conceptual soundness documented
+  ✔ Ongoing monitoring enabled
+  ✔ Outcomes analysis enabled
+  ✔ Drift detection enabled
+
+5. Data Governance (Reg S-P, CFPB)
+  ✔ PII handling policy defined
+  ✔ PII handling is restrictive
+  ✔ Data classification set
+  ✔ Consent requirement configured
+  ✔ Cross-border assessment done
+  ✔ Bias testing enabled
+  ✔ LDA search configured
+
+6. Communications Compliance (FINRA Rule 2210)
+  ✔ Communication type classified
+  ✔ Fair and balanced enforced
+  ✔ No misleading enforced
+  ✔ Pre-review requirement assessed
+  ✔ Disclosure requirements assessed
+
+7. Vendor Management (SR 23-4)
+  ✔ Due diligence complete
+  ✔ SOC report requirement assessed
+  ✔ Vendor AI notification required
+  ✔ Subcontractor assessment done
+
+8. Segregation of Duties
+  ✔ Roles defined (≥2)
+  ✔ Conflict matrix defined
+  ✔ Role assignments configured
+  ✔ State isolation configured
+  ✔ State isolation is full
+  ✔ Credential segregation configured
+  ✔ Credentials are separate
+  ✔ Handoff workflows defined
+  ✔ Enforcement is strict
+    Role assignments:
+      compliance-analyst : analyst
+      fact-checker       : reviewer
+    Conflict rules:
+      analyst <-> reviewer
+      analyst <-> auditor
+      reviewer <-> auditor
+    ✔ No SOD violations detected in role assignments
+    Handoff requirements:
+      regulatory_filing       : analyst → reviewer (approval: yes)
+      customer_communication  : analyst → reviewer (approval: yes)
+
+9. Compliance Artifacts
+  ✔ compliance/ directory exists
+  ✔ regulatory-map.yaml exists
+  ✔ validation-schedule.yaml exists
+  ✔ risk-assessment.md exists
+  ✔ RULES.md exists
+
+10. Audit Hooks
+  ✔ hooks/hooks.yaml exists
+  ✔ Compliance hooks configured
+
+────────────────────────────────────────
+
+This audit report is for informational purposes only.
+Consult with legal and compliance teams for definitive assessments.
+```
+
+## Using the report in a compliance program
+
+The audit report is designed to be shared with:
+
+- **Model risk committees** — Use section 4 (Model Risk Management) as evidence that SR 11-7 controls are configured for each production agent
+- **Compliance officers** — Use the full report as a pre-deployment checklist before promoting an agent to production
+- **Internal auditors** — Use the report as a baseline artifact. Run it periodically and compare output to detect configuration drift
+- **Regulators** — The structured format makes it easy to demonstrate control coverage against specific rule citations
+
+## When to run it
+
+<Steps>
+  <Step title="Before every production deployment">
+    Run `gitagent audit -d ./my-agent` as a mandatory pre-deployment step. The report confirms all compliance controls are configured before the agent reaches customers.
+  </Step>
+  <Step title="In CI/CD pipelines">
+    Use `gitagent validate --compliance` in CI (it exits with code 1 on errors) and `gitagent audit` to generate a report artifact. Store the audit report as a pipeline artifact for each release.
+
+    ```yaml
+    # Example GitHub Actions step
+    - name: Compliance audit
+      run: |
+        gitagent validate --compliance -d ./my-agent
+        gitagent audit -d ./my-agent > audit-report.txt
+
+    - name: Upload audit report
+      uses: actions/upload-artifact@v4
+      with:
+        name: compliance-audit
+        path: audit-report.txt
+    ```
+  </Step>
+  <Step title="On a periodic schedule">
+    Run the audit on a defined cadence (monthly or quarterly) to confirm that configuration has not drifted from the approved baseline. A change in the report output — even a new warning — is a signal to review what changed.
+  </Step>
+  <Step title="After any agent.yaml change">
+    Any change to the `compliance` section should trigger an audit run. Because `agent.yaml` is version-controlled, you can diff the report output against the previous version to see exactly what changed.
+  </Step>
+</Steps>
+
+<Note>
+  The audit report is informational. It checks configuration declared in `agent.yaml` — it cannot verify that your infrastructure actually enforces immutable logs, that designated supervisors are reviewing outputs, or that bias testing is being performed on schedule. Use the report as one input in a broader compliance program.
+</Note>

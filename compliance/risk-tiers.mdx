@@ -1,0 +1,156 @@
+---
+title: "Risk tiers"
+description: "The four GitAgent risk tiers — low, standard, high, and critical — and the compliance requirements that each tier enforces."
+---
+
+Every agent with a `compliance` section must declare a `risk_tier`. The tier drives which validation checks are required versus recommended, and it influences what the `gitagent audit` report flags as missing.
+
+## The four tiers
+
+| Tier | Use case |
+|------|----------|
+| `low` | Internal tooling, development assistants, non-customer-facing agents with no regulatory exposure |
+| `standard` | General-purpose agents with moderate data sensitivity; audit logging recommended |
+| `high` | Agents operating in regulated environments with direct customer or regulatory impact |
+| `critical` | Mission-critical agents with the highest regulatory exposure — all `high` controls plus additional requirements |
+
+## Requirements per tier
+
+The table below shows exactly what each tier requires from `gitagent validate --compliance`. "Required" means validation fails without it. "Recommended" means validation warns but does not fail.
+
+| Control | `low` | `standard` | `high` | `critical` |
+|---------|-------|------------|--------|------------|
+| `risk_tier` declared | Required | Required | Required | Required |
+| `supervision.human_in_the_loop` of `always` or `conditional` | — | — | Required | Required |
+| `recordkeeping.audit_logging: true` | — | — | Required | Required |
+| `model_risk.validation_cadence` of `quarterly` or more frequent | — | — | Recommended | Recommended |
+| `compliance/` directory | — | — | Recommended | Recommended |
+| `compliance/risk-assessment.md` | — | — | Recommended | Recommended |
+| `compliance/regulatory-map.yaml` | — | — | Recommended | Recommended |
+| `compliance/validation-schedule.yaml` | — | — | Recommended | Recommended |
+| `segregation_of_duties.enforcement: strict` (when SOD configured) | — | — | Recommended | Recommended |
+| `segregation_of_duties.isolation.state: full` (when SOD configured) | — | — | Recommended | Recommended |
+| `segregation_of_duties.isolation.credentials: separate` (when SOD configured) | — | — | Recommended | Recommended |
+
+Framework-specific requirements (FINRA, Federal Reserve, SEC, CFPB) apply regardless of tier — they are triggered by the `frameworks` array, not by `risk_tier`.
+
+## How risk_tier affects validation
+
+Section 18 of the spec defines the validation rules. For the `high` and `critical` tiers specifically:
+
+- If `supervision.human_in_the_loop` is absent, `none`, or unset, validation **fails** with a `[FINRA 3110]` error.
+- If `recordkeeping.audit_logging` is not `true`, validation **fails** with a `[FINRA 4511]` error.
+- If `model_risk.validation_cadence` is `annual` or `semi_annual`, validation **warns** with a `[SR 11-7]` message recommending `quarterly`.
+- If the `compliance/` directory or its required files are absent, validation **warns** for each missing item.
+- For multi-agent systems (`agents` section with 2+ agents), validation **warns** if `segregation_of_duties` is not configured.
+
+## Examples
+
+<Tabs>
+  <Tab title="low">
+    ```yaml
+    compliance:
+      risk_tier: low
+      frameworks: []
+    ```
+
+    Minimal declaration. No framework requirements are triggered. Use for internal tools and development agents.
+  </Tab>
+  <Tab title="standard">
+    ```yaml
+    compliance:
+      risk_tier: standard
+      frameworks: []
+      recordkeeping:
+        audit_logging: true
+        log_format: structured_json
+        retention_period: 3y
+    ```
+
+    Audit logging is not required but strongly recommended. Add the `recordkeeping` section to make the audit report pass cleanly.
+  </Tab>
+  <Tab title="high">
+    ```yaml
+    compliance:
+      risk_tier: high
+      frameworks:
+        - finra
+        - federal_reserve
+      supervision:
+        designated_supervisor: chief-compliance-officer
+        human_in_the_loop: always
+        kill_switch: true
+      recordkeeping:
+        audit_logging: true
+        log_format: structured_json
+        retention_period: 7y
+        immutable: true
+      model_risk:
+        inventory_id: MRM-2026-0047
+        validation_cadence: quarterly
+        ongoing_monitoring: true
+    ```
+
+    Human-in-the-loop and audit logging are required. The `compliance/` directory is recommended.
+  </Tab>
+  <Tab title="critical">
+    ```yaml
+    compliance:
+      risk_tier: critical
+      frameworks:
+        - finra
+        - federal_reserve
+        - sec
+        - cfpb
+      supervision:
+        designated_supervisor: chief-compliance-officer
+        review_cadence: weekly
+        human_in_the_loop: always
+        escalation_triggers:
+          - confidence_below: 0.85
+          - action_type: credit_decision
+          - error_detected: true
+        override_capability: true
+        kill_switch: true
+      recordkeeping:
+        audit_logging: true
+        log_format: structured_json
+        retention_period: 7y
+        log_contents:
+          - prompts_and_responses
+          - tool_calls
+          - decision_pathways
+          - model_version
+          - timestamps
+        immutable: true
+      model_risk:
+        inventory_id: MRM-2026-0001
+        validation_cadence: quarterly
+        validation_type: full
+        ongoing_monitoring: true
+        outcomes_analysis: true
+        drift_detection: true
+      segregation_of_duties:
+        roles:
+          - id: maker
+            permissions: [create, submit]
+          - id: checker
+            permissions: [review, approve, reject]
+        conflicts:
+          - [maker, checker]
+        assignments:
+          primary-agent: [maker]
+          review-agent: [checker]
+        isolation:
+          state: full
+          credentials: separate
+        enforcement: strict
+    ```
+
+    All `high` controls plus strict SOD, full isolation, and comprehensive log contents.
+  </Tab>
+</Tabs>
+
+<Tip>
+  When in doubt, choose the tier one level above what you think you need. Upgrading a tier later requires re-validation and potentially restructuring the compliance configuration. It is easier to start stricter and relax controls than the reverse.
+</Tip>

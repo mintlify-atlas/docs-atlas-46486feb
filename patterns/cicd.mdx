@@ -1,0 +1,193 @@
+---
+title: "CI/CD for agents"
+description: "Run gitagent validate on every push, block bad merges, export system prompt artifacts, and treat agent quality like code quality."
+---
+
+An agent definition is code. A broken `SOUL.md`, a skill that references a missing script, or a compliance section that violates your risk tier requirements are bugs — and they should be caught before they reach production, the same way type errors and test failures are.
+
+Running `gitagent validate` in CI gives you:
+
+- **Schema validation** — catch malformed `agent.yaml` on every push
+- **Reference integrity** — fail if a skill, tool, or sub-agent listed in the manifest doesn't exist
+- **Compliance gating** — block merges that violate regulatory requirements
+- **Reproducible artifacts** — export and archive the system prompt for every production release
+- **Audit trail** — CI logs form part of the compliance record
+
+## What gitagent validate checks
+
+```bash
+# Basic validation (always run)
+gitagent validate
+
+# With compliance checks (run on staging and main)
+gitagent validate --compliance
+```
+
+### Basic validation
+
+- `agent.yaml` passes JSON schema validation
+- Required fields (`name`, `version`, `description`) are present
+- All skills listed in `agent.yaml` exist in `skills/`
+- All tools listed in `agent.yaml` exist in `tools/`
+- All sub-agents listed in `agent.yaml` exist in `agents/`
+- `SOUL.md` exists and has real content
+- `hooks/hooks.yaml` scripts exist at their declared paths
+
+### Compliance validation (`--compliance`)
+
+- `risk_tier` is declared when a `compliance` section exists
+- `high` and `critical` agents have `human_in_the_loop: always` or `conditional`
+- `high` and `critical` agents have `audit_logging: true`
+- FINRA agents have `communications.fair_balanced` and `communications.no_misleading` set to `true`
+- Federal Reserve agents have a `model_risk` section with `ongoing_monitoring: true`
+- SEC agents have audit logging and a PII handling policy
+- `compliance/` directory exists and contains required artifacts for `high`/`critical` agents
+- Dependency entries have `vendor_management` metadata (SR 23-4)
+
+## GitHub Actions workflow
+
+This workflow validates on every push, generates a compliance audit report on `main`, and exports the system prompt as a downloadable artifact:
+
+```yaml
+name: Agent CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  validate:
+    name: Validate agent
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install gitagent
+        run: npm install -g gitagent
+
+      - name: Validate agent schema
+        run: gitagent validate -d .
+
+      - name: Validate compliance
+        run: gitagent validate -d . --compliance
+
+      - name: Run audit report
+        run: gitagent audit -d .
+
+      - name: Export system prompt
+        run: gitagent export -f system-prompt -d . -o system-prompt.md
+
+      - name: Upload system prompt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-prompt-${{ github.sha }}
+          path: system-prompt.md
+          retention-days: 90
+```
+
+## Separating dev and production checks
+
+For teams using the [branch-based deployment pattern](/patterns/branch-deployment), run compliance validation only on `staging` and `main` — where it matters — and skip it on feature branches to keep iteration fast:
+
+```yaml
+name: Agent CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  validate:
+    name: Validate agent
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install gitagent
+        run: npm install -g gitagent
+
+      # Always run schema validation
+      - name: Validate schema
+        run: gitagent validate -d .
+
+      # Run compliance checks only on protected branches
+      - name: Validate compliance
+        if: |
+          github.ref == 'refs/heads/main' ||
+          github.ref == 'refs/heads/staging'
+        run: gitagent validate -d . --compliance
+
+      # Generate audit report only for main
+      - name: Audit report
+        if: github.ref == 'refs/heads/main'
+        run: gitagent audit -d .
+
+      # Archive the system prompt for each main release
+      - name: Export system prompt
+        if: github.ref == 'refs/heads/main'
+        run: gitagent export -f system-prompt -d . -o system-prompt.md
+
+      - name: Upload artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-prompt
+          path: system-prompt.md
+          retention-days: 90
+```
+
+## CI badge
+
+Add the CI status badge to your agent repository's `README.md` to show the current validation status:
+
+```markdown
+[![CI](https://github.com/your-org/your-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/your-agent/actions/workflows/ci.yml)
+```
+
+## Benefits
+
+<CardGroup cols={2}>
+  <Card title="Catch schema errors early" icon="triangle-exclamation">
+    A typo in `agent.yaml` or a missing `SOUL.md` fails the build before the agent is ever deployed.
+  </Card>
+  <Card title="Block compliance violations" icon="shield-halved">
+    No PR can merge to `main` if it introduces a supervision or recordkeeping violation.
+  </Card>
+  <Card title="Reproducible system prompts" icon="file-export">
+    Every production release archives the exported system prompt — useful for audits and debugging.
+  </Card>
+  <Card title="Audit trail in CI logs" icon="clipboard-list">
+    CI run logs document that validation was performed on each commit — part of your compliance record.
+  </Card>
+</CardGroup>
+
+<Note>
+The `gitagent audit` command generates a human-readable compliance checklist and exits with code 0 even when warnings are present. To block on warnings, add `--compliance` to `gitagent validate` — that command exits with code 1 on any error.
+</Note>
+
+## Adding gitagent validate to an existing pipeline
+
+If you already have a CI pipeline for your repository, add gitagent validation as an additional job or step. The only requirement is Node.js 18 or later:
+
+```bash
+npm install -g gitagent
+gitagent validate --compliance
+```
+
+The command exits with code 0 on success and code 1 on any validation error, so it integrates cleanly with any CI system that respects exit codes.

@@ -1,0 +1,102 @@
+---
+title: gitagent install
+description: Resolve and install git-based agent dependencies declared in agent.yaml.
+---
+
+`gitagent install` reads the `dependencies` array in `agent.yaml` and installs each one — cloning git repos or copying local paths — into the agent directory.
+
+## Synopsis
+
+```bash
+gitagent install [options]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir <dir>` | `.` | Agent directory containing the `agent.yaml` with dependencies |
+
+## How it works
+
+For each entry in `dependencies`:
+
+1. **Determine the target path.** If the dependency defines a `mount` path, the dependency is installed there. Otherwise it goes to `.gitagent/deps/<name>/`.
+2. **Skip if already installed.** If the target directory already exists, the dependency is skipped with a warning.
+3. **Install by source type:**
+   - **Local path** — if `source` resolves to an existing path on disk, the directory is copied with `cp -r`.
+   - **Git URL** — if `source` contains `github.com` or ends with `.git`, a shallow clone (`git clone --depth 1`) is performed. The `version` field is passed as `--branch` (with any leading `^` stripped).
+4. **Validate.** After installation, the target directory is checked for `agent.yaml`. A warning is printed if the dependency does not appear to be a valid gitagent.
+
+## Dependency declaration
+
+Declare dependencies in `agent.yaml` before running `gitagent install`:
+
+```yaml agent.yaml
+dependencies:
+  - name: fact-checker
+    source: https://github.com/org/fact-checker.git
+    version: ^1.0.0
+    mount: agents/fact-checker
+    vendor_management:
+      due_diligence_date: "2024-01-15"
+      soc_report: true
+      risk_assessment: low
+
+  - name: local-helper
+    source: ../shared-agents/helper
+    mount: agents/helper
+```
+
+## Cache and mount behavior
+
+| `mount` | `version` | Target |
+|---------|-----------|--------|
+| Defined | — | `<agent-dir>/<mount>/` |
+| Not defined | — | `<agent-dir>/.gitagent/deps/<name>/` |
+| — | `^1.0.0` | Cloned at branch/tag `1.0.0` |
+| — | Not set | Cloned at default branch |
+
+<Note>
+The `.gitagent/` directory should be added to `.gitignore`. The `full` template does this automatically.
+</Note>
+
+<Warning>
+If a dependency is already present at the target path, `install` skips it silently. To re-install, remove the target directory first.
+</Warning>
+
+## Validation after install
+
+After each dependency is installed, `gitagent install` checks for `agent.yaml` in the target directory:
+
+- **Found** — prints a success message confirming it is a valid gitagent.
+- **Not found** — prints a warning. The dependency may still be useful (e.g., a skill pack), but it does not conform to the gitagent spec.
+
+## Examples
+
+```bash
+# Install all dependencies for the agent in the current directory
+gitagent install
+
+# Install dependencies for an agent in a specific directory
+gitagent install -d ./my-agent
+
+# Install, then validate
+gitagent install && gitagent validate
+```
+
+## Example output
+
+```
+Installing dependencies
+────────────────────────────
+Installing fact-checker from https://github.com/org/fact-checker.git
+✔ Installed fact-checker (git)
+✔ fact-checker is a valid gitagent
+────────────────────────────
+Installing local-helper from ../shared-agents/helper
+✔ Installed local-helper (local)
+✔ local-helper is a valid gitagent
+────────────────────────────
+✔ Dependencies installed
+```

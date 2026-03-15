@@ -1,0 +1,85 @@
+---
+title: "Memory configuration schema"
+description: "The memory/memory.yaml schema — memory layers, update triggers, and archive policy for persistent cross-session state."
+---
+
+The `memory/` directory provides persistent cross-session state. The configuration file at `memory/memory.yaml` defines how memory layers are structured, when they are updated, and how the archive is managed. The JSON schema is at [`spec/schemas/memory.schema.json`](https://github.com/open-gitagent/gitagent/blob/main/spec/schemas/memory.schema.json).
+
+## MEMORY.md
+
+`memory/MEMORY.md` is the working memory file — the current state that the agent reads at the start of each session. The spec enforces a **200 line maximum** to keep working memory within a reasonable token budget. Content beyond 200 lines should be rotated to the archive.
+
+## memory.yaml structure
+
+### `layers` array
+
+Each layer defines a memory store:
+
+<ParamField path="layers[].name" type="string" required>
+  Layer identifier (e.g., `working`, `archive`).
+</ParamField>
+
+<ParamField path="layers[].path" type="string" required>
+  File or directory path relative to `memory/`.
+</ParamField>
+
+<ParamField path="layers[].max_lines" type="integer">
+  Maximum lines for file-based layers. Minimum: `1`. The working memory layer (`MEMORY.md`) should set this to `200`.
+</ParamField>
+
+<ParamField path="layers[].format" type="enum">
+  Content format. One of: `markdown`, `yaml`, `json`. Default: `markdown`.
+</ParamField>
+
+<ParamField path="layers[].rotation" type="enum">
+  Rotation schedule for directory-based layers. One of: `daily`, `weekly`, `monthly`, `quarterly`, `yearly`.
+</ParamField>
+
+### `update_triggers` array
+
+Defines when memory is written. Valid values:
+
+| Trigger | When it fires |
+|---------|---------------|
+| `on_session_end` | At the end of every session |
+| `on_explicit_save` | When the agent explicitly requests a save |
+| `on_milestone` | When a workflow milestone is reached |
+| `periodic` | On a periodic schedule |
+
+### `archive_policy` object
+
+<ParamField path="archive_policy.max_entries" type="integer">
+  Maximum archive entries before rotation. Minimum: `1`.
+</ParamField>
+
+<ParamField path="archive_policy.compress_after" type="string">
+  Compress entries older than this duration. Format: `<number><unit>` where unit is `d` (days), `m` (months), `y` (years). Example: `90d`.
+</ParamField>
+
+<ParamField path="archive_policy.retention_period" type="string">
+  Delete entries older than this duration. Same format as `compress_after`.
+</ParamField>
+
+## Full example
+
+```yaml
+layers:
+  - name: working
+    path: MEMORY.md
+    max_lines: 200
+    format: markdown
+  - name: archive
+    path: archive/
+    format: yaml
+    rotation: monthly
+update_triggers:
+  - on_session_end
+  - on_explicit_save
+archive_policy:
+  max_entries: 1000
+  compress_after: 90d
+```
+
+<Tip>
+  Keep `MEMORY.md` focused on facts that change between sessions: current project state, recent decisions, outstanding tasks, and context that would otherwise be lost. Static knowledge belongs in `knowledge/` instead.
+</Tip>

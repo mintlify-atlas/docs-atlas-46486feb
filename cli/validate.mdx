@@ -1,0 +1,127 @@
+---
+title: gitagent validate
+description: Validate an agent repository against the spec and optionally check regulatory compliance.
+---
+
+`gitagent validate` runs a suite of checks against your agent directory. It validates schemas, required files, skill frontmatter, hooks, and tools. Add `--compliance` to layer on regulatory checks.
+
+## Synopsis
+
+```bash
+gitagent validate [options]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir <dir>` | `.` | Agent directory to validate |
+| `-c, --compliance` | `false` | Include regulatory compliance validation |
+
+## What gets validated
+
+### agent.yaml
+
+- JSON schema validation against the official `agent-yaml.schema.json`
+- Referenced `skills` exist at `skills/<name>/`
+- Referenced `tools` exist at `tools/<name>.yaml`
+- Referenced sub-agents exist at `agents/<name>/` or `agents/<name>.md`
+
+### SOUL.md
+
+- File exists
+- Not empty
+- Contains at least one paragraph of content (not just headings)
+
+### Skills
+
+- Valid YAML frontmatter against `skill.schema.json`
+- `name` field matches the directory name
+- `name` is at most 64 characters with no consecutive hyphens or leading/trailing hyphens
+- `description` is at most 1024 characters
+- Instructions are under ~5000 tokens (~20 000 characters) — warns if exceeded
+
+### Hooks
+
+- `hooks/hooks.yaml` is valid YAML and passes `hooks.schema.json`
+- Every `script` path referenced in `hooks.yaml` exists on disk
+
+### Tools
+
+- Each `tools/*.yaml` is valid YAML and passes `tool.schema.json`
+
+## With `--compliance`
+
+When you pass `--compliance`, an additional compliance check runs against the `compliance` section of `agent.yaml`.
+
+| Check | Rule | Severity |
+|-------|------|----------|
+| `risk_tier` required when `compliance` section present | — | Error |
+| `high`/`critical` tier requires `supervision.human_in_the_loop` of `always` or `conditional` | FINRA 3110 | Error |
+| `high`/`critical` tier requires `recordkeeping.audit_logging: true` | FINRA 4511 | Error |
+| `high`/`critical` tier recommends `validation_cadence` of `quarterly` or more frequent | SR 11-7 | Warning |
+| FINRA framework requires `communications.fair_balanced: true` | FINRA 2210 | Error |
+| FINRA framework requires `communications.no_misleading: true` | FINRA 2210 | Error |
+| FINRA framework recommends `supervision` section | FINRA 3110 | Warning |
+| FINRA framework recommends `recordkeeping` section | FINRA 4511 | Warning |
+| `federal_reserve` framework requires `model_risk` section | SR 11-7 | Error |
+| `federal_reserve` framework requires `model_risk.ongoing_monitoring: true` | SR 11-7 | Error |
+| `sec` framework recommends `audit_logging` | SEC 17a-4 | Warning |
+| `sec` framework warns when `pii_handling: allow` conflicts with privacy rules | Reg S-P | Warning |
+| `cfpb` framework recommends `data_governance.bias_testing: true` | CFPB Circular 2022-03 | Warning |
+| `high`/`critical` risk recommends `compliance/` directory | — | Warning |
+| `high`/`critical` risk recommends `compliance/risk-assessment.md` | — | Warning |
+| `high`/`critical` risk recommends `compliance/regulatory-map.yaml` | — | Warning |
+| `high`/`critical` risk recommends `compliance/validation-schedule.yaml` | — | Warning |
+| Dependencies in regulated agents recommend `vendor_management` metadata | SR 23-4 | Warning |
+| Segregation of duties: roles must be unique, conflicts reference valid roles, agents hold no conflicting roles | — | Error/Warning |
+
+## Example output
+
+```bash
+gitagent validate -d ./examples/standard
+```
+
+```
+Validating gitagent
+Directory: /path/to/examples/standard
+────────────────────────────
+✔ agent.yaml — valid
+✔ SOUL.md — valid
+✔ tools/lint-check.yaml — valid
+✔ tools/complexity-analysis.yaml — valid
+✔ skills/ — valid
+────────────────────────────
+✔ Validation passed (0 warnings)
+```
+
+```bash
+gitagent validate -d ./examples/full --compliance
+```
+
+```
+Validating gitagent
+Directory: /path/to/examples/full
+────────────────────────────
+✔ agent.yaml — valid
+✔ SOUL.md — valid
+✔ hooks/hooks.yaml — valid
+✔ skills/ — valid
+────────────────────────────
+Compliance Validation
+✔ Compliance configuration — valid
+  ⚠ [SR 11-7] Risk tier "standard" recommends validation_cadence of "quarterly" ...
+────────────────────────────
+✔ Validation passed (1 warning)
+```
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | All checks passed (warnings are non-fatal) |
+| `1` | One or more errors found |
+
+<Tip>
+Run `gitagent validate --compliance` in CI to catch regulatory regressions before merging changes to a production agent.
+</Tip>

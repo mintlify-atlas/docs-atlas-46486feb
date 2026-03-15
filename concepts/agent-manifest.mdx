@@ -1,0 +1,335 @@
+---
+title: "Agent manifest (agent.yaml)"
+description: "Complete reference for agent.yaml — the only file with a strict schema. Covers every field, section, and example."
+---
+
+`agent.yaml` is the heart of every GitAgent repository. It is the only file in the standard with a strict JSON schema. All other files have recommended structures, but `agent.yaml` is validated on every `gitagent validate` run.
+
+## Naming conventions
+
+All YAML keys use **snake_case**. Agent names, skill names, and tool names use **kebab-case** (lowercase with hyphens, e.g. `code-review-agent`). This convention applies uniformly across all GitAgent files.
+
+## Required fields
+
+<ParamField path="name" type="string" required>
+  Agent identifier. Must match the pattern `^[a-z][a-z0-9-]*$` (lowercase, hyphens, no leading/trailing hyphens).
+</ParamField>
+
+<ParamField path="version" type="string" required>
+  Semantic version following the pattern `^X.Y.Z[-prerelease][+build]$`. Example: `1.0.0`, `2.1.0-beta`.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  One-line description of the agent's purpose.
+</ParamField>
+
+## Recommended fields
+
+<ParamField path="spec_version" type="string" default="0.1.0">
+  The gitagent spec version this manifest targets. Pin this to ensure forward-compatibility. Current value: `"0.1.0"`.
+</ParamField>
+
+## Optional fields
+
+<ParamField path="author" type="string">
+  Author name or organization.
+</ParamField>
+
+<ParamField path="license" type="string">
+  SPDX license identifier (e.g. `MIT`, `Apache-2.0`, `proprietary`).
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Categorization tags for discovery and filtering.
+</ParamField>
+
+<ParamField path="metadata" type="object">
+  Arbitrary key-value pairs. Values must be `string`, `number`, or `boolean`.
+</ParamField>
+
+## Model section
+
+The `model` section controls which language model the agent uses and its generation parameters.
+
+<ParamField path="model.preferred" type="string">
+  Primary model ID. Examples: `claude-opus-4-6`, `gpt-4.1`, `gemini-2.5-pro`.
+</ParamField>
+
+<ParamField path="model.fallback" type="string[]">
+  Fallback model IDs in priority order, used when the preferred model is unavailable.
+</ParamField>
+
+<ParamField path="model.constraints.temperature" type="number">
+  Sampling temperature. Range: `0.0` to `2.0`.
+</ParamField>
+
+<ParamField path="model.constraints.max_tokens" type="number">
+  Maximum tokens to generate in a single response.
+</ParamField>
+
+<ParamField path="model.constraints.top_p" type="number">
+  Nucleus sampling probability. Range: `0.0` to `1.0`.
+</ParamField>
+
+<ParamField path="model.constraints.top_k" type="number">
+  Top-k sampling. Limits vocabulary to k most likely tokens.
+</ParamField>
+
+<ParamField path="model.constraints.stop_sequences" type="string[]">
+  Strings that stop generation when encountered.
+</ParamField>
+
+<ParamField path="model.constraints.presence_penalty" type="number">
+  Penalizes tokens that have already appeared in the output.
+</ParamField>
+
+<ParamField path="model.constraints.frequency_penalty" type="number">
+  Penalizes tokens proportional to how often they have appeared.
+</ParamField>
+
+## Skills and tools
+
+<ParamField path="skills" type="string[]">
+  List of enabled skill directory names (kebab-case). Each name must match a directory under `skills/`. Skills are loaded from the discovery paths in priority order.
+</ParamField>
+
+<ParamField path="tools" type="string[]">
+  List of enabled tool file names without extension (kebab-case). Each name must match a file under `tools/<name>.yaml`.
+</ParamField>
+
+## Runtime section
+
+The `runtime` section controls execution behavior.
+
+<ParamField path="runtime.max_turns" type="integer">
+  Maximum number of conversation turns before the agent stops.
+</ParamField>
+
+<ParamField path="runtime.temperature" type="number">
+  Temperature override at runtime. Overrides `model.constraints.temperature` if both are set.
+</ParamField>
+
+<ParamField path="runtime.timeout" type="integer">
+  Maximum session duration in seconds.
+</ParamField>
+
+## A2A section
+
+The `a2a` section exposes the agent for agent-to-agent communication.
+
+<ParamField path="a2a.url" type="string">
+  Endpoint URL where this agent accepts A2A requests.
+</ParamField>
+
+<ParamField path="a2a.capabilities" type="string[]">
+  List of capability names this agent advertises.
+</ParamField>
+
+<ParamField path="a2a.authentication.type" type="string">
+  Authentication scheme. Example: `bearer`.
+</ParamField>
+
+<ParamField path="a2a.authentication.required" type="boolean">
+  Whether authentication is required for incoming A2A requests.
+</ParamField>
+
+<ParamField path="a2a.protocols" type="string[]">
+  Supported A2A protocol versions. Example: `["a2a-v1"]`.
+</ParamField>
+
+## Extends and dependencies
+
+<ParamField path="extends" type="string">
+  Parent agent as a git URL or local path. The child agent inherits the parent's configuration and can override specific fields. See [Inheritance and composition](/concepts/inheritance-composition) for resolution rules.
+</ParamField>
+
+<ParamField path="dependencies" type="object[]">
+  Composed agents with vendor management metadata. Run `gitagent install` to clone them. See [Inheritance and composition](/concepts/inheritance-composition) for the full schema.
+</ParamField>
+
+## Compliance section
+
+The `compliance` section enables regulatory adherence for agents in regulated environments. See the [Compliance](/compliance/overview) section for a deep-dive on every sub-field.
+
+<ParamField path="compliance.risk_tier" type="string">
+  Risk classification: `low`, `standard`, `high`, or `critical`. Required when the `compliance` section is present.
+</ParamField>
+
+<ParamField path="compliance.frameworks" type="string[]">
+  Applicable regulatory frameworks. Standard values: `finra`, `federal_reserve`, `sec`, `cfpb`. Extensible — any string is accepted (e.g. `eu_ai_act`, `uk_fca`).
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+
+```yaml minimal/agent.yaml
+spec_version: "0.1.0"
+name: hello-agent
+version: 0.1.0
+description: A minimal hello world agent
+```
+
+```yaml standard/agent.yaml
+spec_version: "0.1.0"
+name: code-review-agent
+version: 1.0.0
+description: Automated code review agent with best-practice enforcement
+author: gitagent-examples
+license: MIT
+
+model:
+  preferred: claude-sonnet-4-5-20250929
+  fallback:
+    - claude-haiku-4-5-20251001
+  constraints:
+    temperature: 0.2
+    max_tokens: 4096
+
+skills:
+  - code-review
+
+tools:
+  - lint-check
+  - complexity-analysis
+
+runtime:
+  max_turns: 20
+  timeout: 120
+
+tags:
+  - code-review
+  - developer-tools
+```
+
+```yaml full/agent.yaml
+spec_version: "0.1.0"
+name: compliance-analyst
+version: 1.0.0
+description: Financial compliance analysis agent for FINRA and Federal Reserve regulated environments
+author: gitagent-examples
+license: proprietary
+
+model:
+  preferred: claude-opus-4-6
+  fallback:
+    - claude-sonnet-4-5-20250929
+  constraints:
+    temperature: 0.1
+    max_tokens: 8192
+
+skills:
+  - regulatory-analysis
+  - document-review
+
+tools:
+  - search-regulations
+  - generate-report
+
+agents:
+  fact-checker:
+    description: Verifies factual claims against authoritative sources
+    delegation:
+      mode: auto
+      triggers:
+        - factual_claim_detected
+
+delegation:
+  mode: auto
+
+runtime:
+  max_turns: 50
+  temperature: 0.1
+  timeout: 300
+
+a2a:
+  url: https://api.example.com/agent
+  capabilities:
+    - regulatory-analysis
+    - compliance-check
+  authentication:
+    type: bearer
+    required: true
+  protocols:
+    - a2a-v1
+
+extends: https://github.com/org/base-agent.git
+
+dependencies:
+  - name: fact-checker
+    source: ./agents/fact-checker
+    version: 1.0.0
+    mount: agents/fact-checker
+    vendor_management:
+      due_diligence_date: "2026-01-15"
+      soc_report: false
+      risk_assessment: low
+
+compliance:
+  risk_tier: high
+  frameworks:
+    - finra
+    - federal_reserve
+    - sec
+    - cfpb
+  supervision:
+    designated_supervisor: chief-compliance-officer
+    review_cadence: monthly
+    human_in_the_loop: always
+    escalation_triggers:
+      - confidence_below: 0.85
+      - action_type: regulatory_filing
+      - action_type: customer_communication
+      - error_detected: true
+    override_capability: true
+    kill_switch: true
+  recordkeeping:
+    audit_logging: true
+    log_format: structured_json
+    retention_period: 7y
+    log_contents:
+      - prompts_and_responses
+      - tool_calls
+      - decision_pathways
+      - model_version
+      - timestamps
+    immutable: true
+  model_risk:
+    inventory_id: MRM-2026-0047
+    validation_cadence: quarterly
+    validation_type: full
+    ongoing_monitoring: true
+    outcomes_analysis: true
+    drift_detection: true
+  data_governance:
+    pii_handling: redact
+    data_classification: restricted
+    consent_required: true
+    bias_testing: true
+    lda_search: true
+  communications:
+    type: institutional
+    pre_review_required: true
+    fair_balanced: true
+    no_misleading: true
+    disclosures_required: true
+  vendor_management:
+    due_diligence_complete: true
+    soc_report_required: true
+    vendor_ai_notification: true
+    subcontractor_assessment: true
+
+tags:
+  - compliance
+  - financial-services
+  - regulated
+metadata:
+  department: compliance
+  cost_center: CC-COMPLIANCE-001
+```
+
+</CodeGroup>
+
+<Note>
+The JSON schema for `agent.yaml` is available at `spec/schemas/agent-yaml.schema.json` in the GitAgent repository. Run `gitagent validate` to validate your manifest against it.
+</Note>

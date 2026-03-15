@@ -1,0 +1,196 @@
+---
+title: "FINRA compliance"
+description: "How GitAgent maps to FINRA Rules 3110, 4511, 2210, and Regulatory Notice 24-09 — supervision, recordkeeping, and communications configuration."
+---
+
+When you include `finra` in the `frameworks` array, `gitagent validate --compliance` enforces FINRA-specific checks against your `agent.yaml`. This page covers the four primary FINRA obligations and how each maps to `agent.yaml` fields.
+
+## Rule 3110 — Supervision
+
+FINRA Rule 3110 requires member firms to establish and maintain a supervisory system. For AI agents, this means:
+
+- A designated principal is responsible for the agent's outputs
+- The agent escalates decisions to humans at defined thresholds
+- Humans can override any agent decision
+- A kill switch can halt the agent immediately
+
+### Fields
+
+```yaml
+compliance:
+  supervision:
+    designated_supervisor: chief-compliance-officer  # Principal responsible for agent
+    review_cadence: monthly                          # How often the agent is reviewed
+    human_in_the_loop: always                        # always | conditional | advisory | none
+    escalation_triggers:
+      - confidence_below: 0.85                       # Escalate when model confidence drops
+      - action_type: regulatory_filing               # Escalate for specific action types
+      - action_type: customer_communication
+      - action_type: credit_decision
+      - error_detected: true                         # Escalate on any error
+    override_capability: true                        # Humans can override any decision
+    kill_switch: true                                # Immediate halt capability
+```
+
+The `human_in_the_loop` field accepts four values:
+
+| Value | Meaning |
+|-------|---------|
+| `always` | Every agent action requires human review before execution |
+| `conditional` | Human review required only when escalation triggers fire |
+| `advisory` | Humans are notified but not required to approve |
+| `none` | Fully autonomous — no human review |
+
+`high` and `critical` risk tier agents require `always` or `conditional`. Using `none` on a high/critical agent fails validation with a `[FINRA 3110]` error.
+
+Escalation trigger types supported:
+
+| Trigger type | Example |
+|---|---|
+| `confidence_below` | `confidence_below: 0.85` |
+| `action_type` | `action_type: customer_communication` |
+| `error_detected` | `error_detected: true` |
+| `data_classification_above` | `data_classification_above: internal` |
+| `token_count_above` | `token_count_above: 4096` |
+| `custom` | Any custom trigger condition |
+
+## Rule 4511 — Recordkeeping
+
+FINRA Rule 4511 (and the Books and Records rules more broadly) requires that records of AI-assisted activities are retained in a non-rewritable, non-erasable format for at least six years.
+
+### Fields
+
+```yaml
+compliance:
+  recordkeeping:
+    audit_logging: true                # Enable audit logging
+    log_format: structured_json        # structured_json | plaintext
+    retention_period: 7y               # Minimum 6 years for FINRA 4511
+    log_contents:
+      - prompts_and_responses          # Full input/output logging
+      - tool_calls                     # Intermediate tool invocations
+      - decision_pathways              # Reasoning traces
+      - model_version                  # Which model version was used
+      - timestamps                     # ISO 8601 timestamps
+    immutable: true                    # Logs cannot be modified after write
+```
+
+The `audit` command checks the `retention_period` value against regulatory minimums:
+
+- **FINRA 4511**: minimum 6 years. Retention below `6y` triggers a warning.
+- **SEC 17a-4**: minimum 3 years. Retention below `3y` triggers a warning.
+
+The format `<number><unit>` is used where unit is `y` (years), `m` (months), or `d` (days).
+
+<Warning>
+  Setting `immutable: true` declares your intent that logs cannot be modified after write. Your actual log storage infrastructure must enforce this property — the agent manifest alone does not guarantee immutability.
+</Warning>
+
+## Rule 2210 — Communications
+
+FINRA Rule 2210 governs communications with the public. It requires that communications are fair and balanced, not misleading, and appropriately reviewed before delivery to customers.
+
+### Fields
+
+```yaml
+compliance:
+  communications:
+    type: institutional           # correspondence | retail | institutional
+    pre_review_required: true     # Principal pre-approval before delivery
+    fair_balanced: true           # Must be fair and balanced
+    no_misleading: true           # No misleading statements
+    disclosures_required: true    # AI-generated nature disclosed
+```
+
+Communication types:
+
+| Type | Description |
+|------|-------------|
+| `correspondence` | One-to-one communications with a specific customer |
+| `retail` | Communications to 25 or more retail investors |
+| `institutional` | Communications to institutional investors only |
+
+When `type` is `retail`, `gitagent audit` warns if `pre_review_required` is not set — retail communications typically require principal pre-review under FINRA Rule 2210(b)(1).
+
+When `finra` is in `frameworks`, both `fair_balanced: true` and `no_misleading: true` are **required** — validation fails without them.
+
+## Regulatory Notice 24-09
+
+FINRA Regulatory Notice 24-09 clarified that existing FINRA rules apply fully to AI and LLM-generated content. There is no separate compliance configuration for 24-09 — it is satisfied by correctly configuring the three rules above (3110, 4511, 2210).
+
+Additionally, Regulatory Notice 25-07 addresses GenAI recordkeeping, and 21-29 covers outsourcing to third-party vendors (see [vendor management](/compliance/federal-reserve#sr-23-4-third-party-risk) in the Federal Reserve section).
+
+## Full FINRA configuration example
+
+```yaml
+compliance:
+  risk_tier: high
+  frameworks:
+    - finra
+
+  supervision:
+    designated_supervisor: chief-compliance-officer
+    review_cadence: monthly
+    human_in_the_loop: always
+    escalation_triggers:
+      - confidence_below: 0.85
+      - action_type: regulatory_filing
+      - action_type: customer_communication
+      - error_detected: true
+    override_capability: true
+    kill_switch: true
+
+  recordkeeping:
+    audit_logging: true
+    log_format: structured_json
+    retention_period: 7y
+    log_contents:
+      - prompts_and_responses
+      - tool_calls
+      - decision_pathways
+      - model_version
+      - timestamps
+    immutable: true
+
+  communications:
+    type: correspondence
+    pre_review_required: true
+    fair_balanced: true
+    no_misleading: true
+    disclosures_required: true
+```
+
+## Validation checks for FINRA
+
+When `finra` is in `frameworks`, `gitagent validate --compliance` runs these checks:
+
+| Check | Severity | Rule |
+|-------|----------|------|
+| `communications.fair_balanced` must be `true` | Error | FINRA 2210 |
+| `communications.no_misleading` must be `true` | Error | FINRA 2210 |
+| `supervision` section recommended | Warning | FINRA 3110 |
+| `recordkeeping` section recommended | Warning | FINRA 4511 |
+| `high`/`critical` tier requires `human_in_the_loop` of `always` or `conditional` | Error | FINRA 3110 |
+| `high`/`critical` tier requires `audit_logging: true` | Error | FINRA 4511 |
+| `retention_period` below `6y` for FINRA agents | Warning | FINRA 4511 |
+| `retail` type without `pre_review_required` | Warning | FINRA 2210(b)(1) |
+
+## FINRA rules reference
+
+Full rule-to-field mapping from spec section 20:
+
+| Rule | Subject | `agent.yaml` field |
+|------|---------|-------------------|
+| 2010 | Standards of Commercial Honor | `RULES.md` ethical constraints |
+| 2111 | Suitability | `compliance.communications` |
+| 2210 | Communications with the Public | `compliance.communications` |
+| 3110 | Supervision | `compliance.supervision` |
+| 3120 | Supervisory Control System | `compliance.supervision` |
+| 4370 | Business Continuity Plans | `hooks.on_error` |
+| 4511 | General Requirements (Books and Records) | `compliance.recordkeeping` |
+
+| Regulatory Notice | Subject |
+|-------------------|---------|
+| 24-09 | Regulatory Obligations When Using GenAI/LLMs |
+| 25-07 | Modernizing Workplaces (GenAI recordkeeping) |
+| 21-29 | Outsourcing to Third-Party Vendors |

@@ -1,0 +1,245 @@
+---
+title: "Agent forking and remixing"
+description: "Fork any public agent repo, customize SOUL.md, add your own skills, and PR improvements back upstream — open-source collaboration for AI agents."
+---
+
+Because an agent is a git repository, forking works exactly as it does for any open-source project. Fork, customize, ship — and contribute improvements back. This makes agent definitions a first-class participant in the open-source ecosystem.
+
+## Why agent forking matters
+
+Most agent frameworks lock behavior into code: prompts are hard-coded, skills are Python classes, configuration is buried in SDK-specific formats. There is nothing to fork.
+
+With GitAgent, the entire agent definition — identity, rules, skills, compliance configuration — is plain text in a git repository. Anyone can:
+
+- Fork a public agent and customize it for their use case
+- Browse the diff between their fork and the upstream to understand what changed
+- Open a PR upstream to contribute a new skill or a compliance improvement
+- Pin their deployment to a specific upstream tag while tracking improvements in a branch
+
+## Forking a public agent
+
+<Steps>
+  <Step title="Fork on GitHub">
+    Navigate to the public agent repository on GitHub and click **Fork**. This creates your own copy under your namespace:
+
+    ```
+    https://github.com/open-gitagent/compliance-agent
+                          ↓ fork
+    https://github.com/your-org/compliance-agent
+    ```
+
+    Then clone your fork locally:
+
+    ```bash
+    git clone https://github.com/your-org/compliance-agent
+    cd compliance-agent
+    ```
+  </Step>
+
+  <Step title="Customize SOUL.md">
+    Edit `SOUL.md` to give the agent your organization's identity, tone, and domain focus. This is the most common customization — the upstream agent may be a general-purpose compliance analyst, while yours specializes in mortgage lending under ECOA:
+
+    ```bash
+    # Edit the identity to reflect your jurisdiction and domain
+    vim SOUL.md
+
+    git add SOUL.md
+    git commit -m "Specialize SOUL.md for mortgage lending under ECOA"
+    ```
+  </Step>
+
+  <Step title="Add your own skills">
+    Add jurisdiction-specific or organization-specific skills that the upstream doesn't have:
+
+    ```bash
+    # Create a new skill directory
+    mkdir -p skills/hmda-compliance
+
+    cat > skills/hmda-compliance/SKILL.md << 'EOF'
+    ---
+    name: hmda-compliance
+    description: Analyze loan applications for HMDA reporting requirements
+    license: proprietary
+    metadata:
+      author: your-org
+      version: "1.0.0"
+      category: compliance
+    ---
+
+    # HMDA Compliance Analysis
+
+    ## Instructions
+    When reviewing a loan application for HMDA compliance:
+    1. Identify the reportable loan type
+    2. Check required HMDA data fields are complete
+    3. Flag any fields that require LAR reporting
+    4. Confirm geocoding requirements are met
+    EOF
+
+    # Register the skill in agent.yaml
+    # Add - hmda-compliance to the skills list
+
+    gitagent validate
+    git add skills/hmda-compliance/ agent.yaml
+    git commit -m "Add HMDA compliance skill"
+    ```
+  </Step>
+
+  <Step title="Update agent.yaml">
+    Update the manifest to reflect your fork's version, authorship, and any configuration changes:
+
+    ```yaml
+    spec_version: "0.1.0"
+    name: compliance-agent-mortgage
+    version: 1.0.0
+    description: Mortgage lending compliance agent — ECOA, HMDA, RESPA
+    author: Your Org
+
+    # Point extends at the upstream for future upstream merges
+    extends: https://github.com/open-gitagent/compliance-agent.git
+
+    skills:
+      - regulatory-analysis      # inherited from upstream via extends
+      - document-review          # inherited from upstream via extends
+      - hmda-compliance          # your addition
+
+    compliance:
+      frameworks:
+        - finra
+        - federal_reserve
+        - cfpb                   # your addition for fair lending
+    ```
+  </Step>
+
+  <Step title="Validate and run">
+    Validate the customized agent, then run it:
+
+    ```bash
+    gitagent validate --compliance
+    gitagent run -d . -a claude -p "Review this mortgage application for HMDA compliance"
+    ```
+  </Step>
+
+  <Step title="PR improvements back upstream">
+    If you've added a skill or fixed a bug that would benefit the upstream agent, open a PR. Because the change is a diff of plain markdown files, upstream maintainers can review it in GitHub's standard PR interface — no code review of Python or YAML DSL required.
+
+    ```bash
+    # Create a branch for the upstream contribution
+    git checkout -b upstream/add-ecoa-skill
+
+    # Cherry-pick or re-implement the change for the upstream context
+    # Open the PR against the upstream repo
+    gh pr create \
+      --repo open-gitagent/compliance-agent \
+      --title "Add ECOA adverse action analysis skill" \
+      --body "Adds a skill for analyzing adverse action notices under ECOA Reg B."
+    ```
+  </Step>
+</Steps>
+
+## Using extends for inheritance from a forked parent
+
+The `extends` field in `agent.yaml` lets your fork inherit from the upstream and track upstream improvements:
+
+```yaml
+# Your fork's agent.yaml
+name: compliance-agent-mortgage
+extends: https://github.com/open-gitagent/compliance-agent.git
+```
+
+With `extends` pointing at the upstream, your fork inherits:
+
+| File / Directory | Behavior |
+|---|---|
+| `agent.yaml` | Deep merge — your fields override upstream |
+| `SOUL.md` | Your file replaces upstream entirely |
+| `RULES.md` | Union — your rules are appended to upstream rules |
+| `skills/` | Union — you add skills; same-name skills use yours |
+| `compliance/` | Deep merge — you inherit and can override |
+
+To pull in upstream improvements, run:
+
+```bash
+gitagent install   # re-clones the upstream at the specified version
+```
+
+## Installing skills from forked repos
+
+You can install individual skills from any public agent repository using `gitagent skills install` with the GitHub provider:
+
+```bash
+# Install a skill from a forked repo
+gitagent skills install your-org/compliance-agent#skills/hmda-compliance \
+  --provider github
+
+# Install a skill from a specific commit or tag
+gitagent skills install open-gitagent/compliance-agent#skills/regulatory-analysis \
+  --provider github
+
+# Install globally (available to all agents on this machine)
+gitagent skills install open-gitagent/compliance-agent#skills/security-scan \
+  --provider github --global
+```
+
+This lets you mix and match skills from different repos without forking the entire agent.
+
+## Example: forking a compliance agent for a specific jurisdiction
+
+A US-focused compliance agent from the community covers FINRA, SEC, and Federal Reserve rules. Your firm operates under UK FCA regulations. Here is how to fork and adapt it:
+
+```yaml
+# my-fork/agent.yaml
+spec_version: "0.1.0"
+name: compliance-agent-uk-fca
+version: 1.0.0
+description: UK FCA compliance agent — MAR, COBS, SYSC
+author: Your UK Firm
+
+extends: https://github.com/open-gitagent/compliance-agent.git
+
+# Add FCA-specific skills
+skills:
+  - regulatory-analysis       # from upstream
+  - fca-mar-analysis          # your addition
+  - cobs-suitability          # your addition
+
+# Override compliance frameworks
+compliance:
+  frameworks:
+    - uk_fca                  # replaces finra, federal_reserve
+  supervision:
+    human_in_the_loop: always
+```
+
+Your `SOUL.md` establishes the FCA context:
+
+```markdown
+# Soul
+
+## Core Identity
+I am a regulatory compliance analyst specializing in UK FCA rules —
+MAR (Market Abuse Regulation), COBS (Conduct of Business Sourcebook),
+and SYSC (Senior Management Arrangements, Systems and Controls).
+
+## Domain Expertise
+- FCA MAR market abuse detection
+- COBS suitability and appropriateness assessments
+- SYSC governance and operational risk
+- MiFID II transaction reporting
+```
+
+## The agent registry vision
+
+The GitAgent community is building toward a public registry of agent definitions — a place where firms can publish general-purpose agents, discover community-maintained skills, and fork compliant starting points for regulated industries.
+
+Until a formal registry exists, you can discover public agents by searching GitHub for the `gitagent` topic:
+
+```bash
+# Search for public gitagent repositories
+gitagent skills search "compliance" --provider github
+
+# Or browse directly
+# https://github.com/topics/gitagent
+```
+
+If you've built an agent using GitAgent, add the `gitagent` topic to your repository to make it discoverable.

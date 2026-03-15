@@ -1,0 +1,226 @@
+---
+title: "Installation"
+description: "Install gitagent and scaffold your first agent in minutes."
+---
+
+## Prerequisites
+
+gitagent requires **Node.js 18 or later**. Check your version:
+
+```bash
+node --version
+```
+
+If you need to install or upgrade Node.js, download it from [nodejs.org](https://nodejs.org) or use a version manager like `nvm` or `fnm`.
+
+## Install gitagent
+
+Install the CLI globally so `gitagent` is available anywhere on your system:
+
+<CodeGroup>
+
+```bash npm
+npm install -g gitagent
+```
+
+```bash pnpm
+pnpm add -g gitagent
+```
+
+```bash yarn
+yarn global add gitagent
+```
+
+</CodeGroup>
+
+The package is published as [`@shreyaskapale/gitagent`](https://www.npmjs.com/package/@shreyaskapale/gitagent) on npm. The `gitagent` binary is registered automatically.
+
+## Verify the installation
+
+```bash
+gitagent --version
+```
+
+This prints the installed version (e.g. `0.1.7`).
+
+To see all available commands and flags:
+
+```bash
+gitagent --help
+```
+
+## Available templates
+
+The `gitagent init` command scaffolds a new agent directory using one of three templates. Choose the template that matches how much structure you need:
+
+| Template | Files created | Best for |
+|----------|---------------|----------|
+| `minimal` | `agent.yaml`, `SOUL.md` | Proof of concept, hello-world agents, learning the spec |
+| `standard` | `agent.yaml`, `SOUL.md`, `RULES.md`, `AGENTS.md`, `skills/example-skill/SKILL.md`, `knowledge/index.yaml`, `tools/` | Most agents — gives you skills, knowledge, and rules without compliance overhead |
+| `full` | Everything in `standard` + `memory/`, `hooks/`, `examples/`, `agents/`, `compliance/`, `config/`, `.gitignore` | Production agents, regulated industries, multi-agent systems |
+
+<Note>
+  Only `agent.yaml` and `SOUL.md` are required by the gitagent specification. Every other file and directory is optional — add what you need, ignore the rest.
+</Note>
+
+### minimal template
+
+Two files. The absolute minimum to be a valid gitagent.
+
+```
+my-agent/
+├── agent.yaml
+└── SOUL.md
+```
+
+`agent.yaml` for the minimal template:
+
+```yaml
+spec_version: "0.1.0"
+name: my-agent
+version: 0.1.0
+description: A helpful assistant agent
+```
+
+`SOUL.md` for the minimal template:
+
+```markdown
+# Soul
+
+I am a helpful assistant. I communicate clearly and concisely, focusing on providing accurate and useful information.
+```
+
+### standard template
+
+The standard template is the recommended starting point for most agents.
+
+```
+my-agent/
+├── agent.yaml
+├── SOUL.md
+├── RULES.md
+├── AGENTS.md
+├── skills/
+│   └── example-skill/
+│       └── SKILL.md
+├── knowledge/
+│   └── index.yaml
+└── tools/
+```
+
+`agent.yaml` for the standard template:
+
+```yaml
+spec_version: "0.1.0"
+name: my-agent
+version: 0.1.0
+description: A helpful assistant agent
+author: ""
+license: MIT
+model:
+  preferred: claude-sonnet-4-5-20250929
+  constraints:
+    temperature: 0.3
+    max_tokens: 4096
+skills: []
+tools: []
+runtime:
+  max_turns: 30
+  timeout: 120
+tags: []
+```
+
+### full template
+
+The full template scaffolds everything you need for a production-grade agent with compliance configuration, lifecycle hooks, persistent memory, and sub-agent slots.
+
+```
+my-agent/
+├── agent.yaml          # Includes compliance section pre-filled
+├── SOUL.md
+├── RULES.md            # Extended with regulatory constraints
+├── AGENTS.md
+├── DUTIES.md           # Segregation of duties policy
+├── skills/
+│   └── example-skill/
+│       └── SKILL.md
+├── knowledge/
+│   └── index.yaml
+├── tools/
+├── memory/
+│   ├── MEMORY.md
+│   └── memory.yaml
+├── workflows/
+├── hooks/
+│   ├── hooks.yaml
+│   └── scripts/
+│       ├── on-start.sh
+│       └── on-error.sh
+├── examples/
+│   └── scenarios/
+├── agents/
+├── compliance/
+│   ├── risk-assessment.md
+│   ├── regulatory-map.yaml
+│   └── validation-schedule.yaml
+├── config/
+│   └── default.yaml
+└── .gitignore
+```
+
+## Quick test: init and validate
+
+The fastest way to confirm gitagent is working is to scaffold a minimal agent and validate it:
+
+```bash
+mkdir my-agent && cd my-agent
+gitagent init --template minimal
+gitagent validate
+```
+
+Expected output:
+
+```
+Validating gitagent
+Directory: /path/to/my-agent
+────────────────────────────────
+✔ agent.yaml — valid
+✔ SOUL.md — valid
+────────────────────────────────
+✔ Validation passed (0 warnings)
+```
+
+If you see `Validation passed`, gitagent is installed correctly and your agent is spec-compliant.
+
+<Tip>
+  You can also init into a specific directory without changing into it first:
+
+  ```bash
+  gitagent init --template standard --dir ./my-agent
+  gitagent validate -d ./my-agent
+  ```
+</Tip>
+
+## Upgrading
+
+To upgrade to the latest version:
+
+<CodeGroup>
+
+```bash npm
+npm update -g gitagent
+```
+
+```bash pnpm
+pnpm update -g gitagent
+```
+
+```bash yarn
+yarn global upgrade gitagent
+```
+
+</CodeGroup>
+
+## Next steps
+
+Once installed, follow the [Quickstart](/quickstart) to scaffold a standard agent, validate it, and run it for the first time.

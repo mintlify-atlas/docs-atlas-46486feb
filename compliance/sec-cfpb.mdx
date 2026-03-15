@@ -1,0 +1,142 @@
+---
+title: "SEC and CFPB compliance"
+description: "How GitAgent maps to SEC Reg S-P, SEC 17a-4 records retention, and CFPB Circular 2022-03 adverse action requirements — data governance fields and validation checks."
+---
+
+SEC and CFPB compliance in GitAgent centers on the `data_governance` section of `agent.yaml`. When you include `sec` or `cfpb` in the `frameworks` array, `gitagent validate --compliance` runs the corresponding checks.
+
+## SEC Reg S-P — Customer privacy
+
+SEC Regulation S-P requires broker-dealers and investment advisers to protect the privacy of customer financial information. For AI agents, this means defining how personally identifiable information (PII) is handled in every prompt, tool call, and logged output.
+
+### Fields
+
+```yaml
+compliance:
+  data_governance:
+    pii_handling: redact             # redact | encrypt | prohibit | allow
+    data_classification: restricted  # public | internal | confidential | restricted
+    consent_required: true           # Requires user consent before processing
+    cross_border: false              # Data does not cross jurisdictions
+```
+
+`pii_handling` options:
+
+| Value | Behavior |
+|-------|----------|
+| `redact` | PII is stripped or masked before logging and output |
+| `encrypt` | PII is encrypted in transit and at rest |
+| `prohibit` | Agent is not permitted to process PII at all |
+| `allow` | PII may flow through — triggers a Reg S-P warning in validation |
+
+When `sec` is in `frameworks` and `pii_handling` is `allow`, `gitagent validate --compliance` warns that this configuration may conflict with customer privacy requirements under Reg S-P.
+
+### RULES.md regulatory constraints
+
+For Reg S-P compliance, add explicit constraints to `RULES.md`:
+
+```markdown
+## Regulatory Constraints
+
+### SEC Reg S-P — Privacy
+- Never include PII in logs or outputs unless explicitly required
+- Redact customer identifiers in all intermediate reasoning
+- Never transmit restricted data across jurisdictional boundaries
+```
+
+## SEC 17a-4 — Records retention
+
+SEC Rule 17a-4 requires that records be retained in a non-rewritable, non-erasable format. For AI agents, this maps to the `recordkeeping` section.
+
+### Fields
+
+```yaml
+compliance:
+  recordkeeping:
+    audit_logging: true
+    log_format: structured_json
+    retention_period: 7y          # Minimum 3 years for SEC 17a-4
+    log_contents:
+      - prompts_and_responses
+      - tool_calls
+      - decision_pathways
+      - model_version
+      - timestamps
+    immutable: true
+```
+
+The `gitagent audit` command checks retention against the SEC minimum. A `retention_period` below `3y` triggers a warning citing SEC 17a-4.
+
+When `sec` is in `frameworks`, `gitagent validate --compliance` recommends `audit_logging: true` with a warning (not an error) if it is absent.
+
+## CFPB Circular 2022-03 — Adverse action and LDA search
+
+CFPB Circular 2022-03 addresses the use of complex algorithms (including AI/ML models) in credit decisions. It clarifies that the "black box" nature of a model is not a defense for failing to provide specific, accurate adverse action reasons. It also raises expectations around Less Discriminatory Alternative (LDA) search.
+
+### Fields
+
+```yaml
+compliance:
+  data_governance:
+    bias_testing: true      # Regular bias testing required
+    lda_search: true        # Less Discriminatory Alternative search documented
+```
+
+`bias_testing: true` indicates that the agent undergoes regular testing for discriminatory patterns in its outputs. When `cfpb` is in `frameworks` and `bias_testing` is not `true`, `gitagent validate --compliance` warns.
+
+`lda_search: true` indicates that the firm has performed a search for less discriminatory alternatives to the agent's decision logic — a CFPB supervisory expectation for credit-decision AI systems.
+
+### Bias testing schedule
+
+For `high` and `critical` agents, document bias testing in `compliance/validation-schedule.yaml`:
+
+```yaml
+schedule:
+  - type: bias_testing
+    description: "Fair lending bias testing per CFPB supervisory expectations"
+    cadence: quarterly
+    owner: fair-lending-team
+    cfpb_elements:
+      - disparate_impact_analysis
+      - lda_search
+      - alternative_data_review
+```
+
+## Full data_governance example
+
+```yaml
+compliance:
+  risk_tier: high
+  frameworks:
+    - sec
+    - cfpb
+
+  data_governance:
+    pii_handling: redact
+    data_classification: restricted
+    consent_required: true
+    cross_border: false
+    bias_testing: true
+    lda_search: true
+
+  recordkeeping:
+    audit_logging: true
+    log_format: structured_json
+    retention_period: 7y
+    log_contents:
+      - prompts_and_responses
+      - tool_calls
+      - decision_pathways
+      - model_version
+      - timestamps
+    immutable: true
+```
+
+## Validation checks for SEC and CFPB
+
+| Check | Severity | Rule |
+|-------|----------|------|
+| `sec` framework recommends `audit_logging: true` | Warning | SEC 17a-4 |
+| `pii_handling: allow` may conflict with customer privacy requirements | Warning | Reg S-P |
+| `cfpb` framework recommends `bias_testing: true` | Warning | CFPB Circular 2022-03 |
+| Retention below `3y` for SEC agents | Warning | SEC 17a-4 |

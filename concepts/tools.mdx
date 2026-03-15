@@ -1,0 +1,154 @@
+---
+title: "Tools"
+description: "MCP-compatible tool definitions for GitAgent — schema, annotations, implementation, and how tools are referenced from agent.yaml."
+---
+
+Tools are MCP-compatible function definitions stored as YAML files in the `tools/` directory. They let your agent call structured, typed functions — searching databases, running scripts, generating reports, and more.
+
+## What tools are
+
+A tool is a typed function that the agent can invoke at runtime. Each tool has:
+
+- An **input schema** that defines what arguments it accepts
+- An **output schema** that defines what it returns
+- An **implementation** that specifies how it runs (script, API call, etc.)
+- **Annotations** that declare its behavior characteristics (read-only, cost, confirmation required)
+
+Tools are different from skills: a skill is a set of instructions that shapes *how the agent thinks*; a tool is a function the agent *calls* to take an action or retrieve data.
+
+## How tools are referenced
+
+List enabled tools in `agent.yaml` by name (without the `.yaml` extension):
+
+```yaml
+tools:
+  - search-regulations
+  - generate-report
+  - lint-check
+```
+
+Each name must match a file at `tools/<name>.yaml`.
+
+## Tool schema
+
+Each tool file is a YAML document with these fields:
+
+<ParamField path="name" type="string" required>
+  Tool identifier in kebab-case. Must match the filename without extension.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Clear description of what the tool does. Used by the agent to decide when to call it.
+</ParamField>
+
+<ParamField path="version" type="string">
+  Semantic version of this tool definition.
+</ParamField>
+
+<ParamField path="input_schema" type="object">
+  JSON Schema object defining the tool's input parameters. Use `type: object` at the top level with `properties` and `required` arrays.
+</ParamField>
+
+<ParamField path="output_schema" type="object">
+  JSON Schema object defining the tool's output structure.
+</ParamField>
+
+<ParamField path="implementation" type="object">
+  How the tool is executed. Supports `type: script` with `path`, `runtime`, and `timeout` sub-fields.
+</ParamField>
+
+<ParamField path="annotations" type="object">
+  Behavioral metadata that helps the agent and runtime make decisions about when and how to call the tool.
+</ParamField>
+
+### Tool annotations
+
+<ParamField path="annotations.requires_confirmation" type="boolean">
+  Whether the agent must ask the user for confirmation before calling this tool. Use `true` for destructive or irreversible actions.
+</ParamField>
+
+<ParamField path="annotations.read_only" type="boolean">
+  Whether this tool only reads data without modifying state. Allows the runtime to call it freely without side-effect concerns.
+</ParamField>
+
+<ParamField path="annotations.cost" type="string">
+  Relative cost indicator: `low`, `medium`, or `high`. Helps the agent avoid expensive tools for simple tasks.
+</ParamField>
+
+## Full example
+
+```yaml
+name: search-regulations
+description: Search FINRA, SEC, and Federal Reserve regulatory databases
+version: 1.0.0
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+      description: Search query for regulations
+    framework:
+      type: string
+      enum: [finra, sec, federal_reserve, cfpb, all]
+      description: Regulatory framework to search
+      default: all
+    date_range:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+    document_type:
+      type: string
+      enum: [rule, notice, guidance, circular, sr_letter, all]
+      default: all
+  required: [query]
+output_schema:
+  type: object
+  properties:
+    results:
+      type: array
+      items:
+        type: object
+        properties:
+          title:
+            type: string
+          citation:
+            type: string
+          framework:
+            type: string
+          effective_date:
+            type: string
+          excerpt:
+            type: string
+          url:
+            type: string
+    total_count:
+      type: integer
+implementation:
+  type: script
+  path: search-regulations.py
+  runtime: python3
+  timeout: 30
+annotations:
+  requires_confirmation: false
+  read_only: true
+  cost: low
+```
+
+## Tool validation
+
+Run `gitagent validate` to check that:
+
+- All tools referenced in `agent.yaml` exist under `tools/`
+- Each tool file is valid YAML
+- Input and output schemas are valid JSON Schema
+
+The JSON schema for tool definitions is at `spec/schemas/tool.schema.json`.
+
+<Tip>
+Tools with `read_only: true` can be called freely by the agent. Set `requires_confirmation: true` for any tool that writes, deletes, or has external side effects.
+</Tip>

@@ -1,0 +1,153 @@
+---
+title: "Hooks configuration schema"
+description: "The hooks/hooks.yaml schema — available lifecycle events, hook entry fields, and the JSON stdin/stdout protocol for hook scripts."
+---
+
+Hooks are lifecycle event handlers stored in `hooks/`. They intercept agent events to perform audit logging, compliance checks, escalation, and other side effects. The JSON schema is at [`spec/schemas/hooks.schema.json`](https://github.com/open-gitagent/gitagent/blob/main/spec/schemas/hooks.schema.json). The hook I/O protocol is defined in [`spec/schemas/hook-io.schema.json`](https://github.com/open-gitagent/gitagent/blob/main/spec/schemas/hook-io.schema.json).
+
+## hooks.yaml structure
+
+The `hooks/hooks.yaml` file contains a single top-level `hooks` object. Each key is a lifecycle event name, and each value is an array of hook entries.
+
+## Available hook events
+
+| Event | Timing |
+|-------|--------|
+| `on_session_start` | Fired when the agent session begins |
+| `on_session_end` | Fired when the agent session ends |
+| `pre_tool_use` | Fired before a tool is invoked |
+| `post_tool_use` | Fired after a tool returns |
+| `pre_response` | Fired before the agent sends a response |
+| `post_response` | Fired after the agent sends a response |
+| `on_error` | Fired when an error occurs |
+
+## Hook entry fields
+
+Each hook entry in the array supports these fields:
+
+<ParamField path="script" type="string" required>
+  Path to the hook script, relative to `hooks/`.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Human-readable description of what this hook does.
+</ParamField>
+
+<ParamField path="timeout" type="integer">
+  Timeout in seconds. Default: `30`. Minimum: `1`.
+</ParamField>
+
+<ParamField path="compliance" type="boolean">
+  Whether this hook is required for regulatory compliance. Default: `false`. Compliance hooks are flagged in `gitagent audit` output.
+</ParamField>
+
+<ParamField path="fail_open" type="boolean">
+  If `true`, hook failure allows the action to proceed. If `false` (default), hook failure blocks the action.
+</ParamField>
+
+## Hook script protocol
+
+Hook scripts receive a JSON object on stdin and must return a JSON object on stdout.
+
+### Input schema
+
+The input object contains four required fields:
+
+<ResponseField name="event" type="string">
+  Lifecycle event that triggered this hook. One of the seven event names above.
+</ResponseField>
+
+<ResponseField name="timestamp" type="string">
+  ISO 8601 timestamp of the event.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Event-specific payload. Fields vary by event:
+  - `tool_name` (string) — tool being invoked (`pre_tool_use`, `post_tool_use`)
+  - `arguments` (object) — tool arguments (`pre_tool_use`)
+  - `result` (any) — tool result (`post_tool_use`)
+  - `response` (string) — agent response text (`pre_response`, `post_response`)
+  - `error` (object with `message`, `code`, `stack`) — error details (`on_error`)
+</ResponseField>
+
+<ResponseField name="session" type="object">
+  Session context. Contains `id` (session identifier), `agent` (agent name), `model_version` (model in use), and `turn` (current conversation turn number).
+</ResponseField>
+
+### Output schema
+
+The output object must contain `action` and may include additional fields:
+
+<ResponseField name="action" type="string">
+  Required. One of:
+  - `allow` — proceed as normal
+  - `block` — prevent the action from executing
+  - `modify` — proceed with modifications specified in `modifications`
+</ResponseField>
+
+<ResponseField name="modifications" type="object | null">
+  Modified data when `action` is `modify`. Structure matches the `data` field of the input.
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  Human-readable reason for `block` or `modify` actions.
+</ResponseField>
+
+<ResponseField name="audit" type="object">
+  Audit metadata to attach to the event log. Fields: `logged` (boolean), `log_id` (string), `timestamp` (ISO 8601), `escalated` (boolean), `finalized` (boolean).
+</ResponseField>
+
+## Full example
+
+```yaml
+hooks:
+  on_session_start:
+    - script: scripts/load-compliance-context.sh
+      description: Load regulatory context for session
+  pre_tool_use:
+    - script: scripts/audit-tool-call.sh
+      description: Log tool invocation for audit trail
+      compliance: true
+  post_response:
+    - script: scripts/check-communications-compliance.sh
+      description: Verify response meets FINRA 2210 standards
+      compliance: true
+  on_error:
+    - script: scripts/escalate-error.sh
+      description: Escalate errors to designated supervisor
+```
+
+### Example hook input (pre_tool_use)
+
+```json
+{
+  "event": "pre_tool_use",
+  "timestamp": "2026-02-16T12:00:00Z",
+  "data": {
+    "tool_name": "search-regulations",
+    "arguments": { "query": "FINRA Rule 3110" }
+  },
+  "session": {
+    "id": "sess_abc123",
+    "agent": "compliance-analyst",
+    "model_version": "claude-opus-4-6"
+  }
+}
+```
+
+### Example hook output
+
+```json
+{
+  "action": "allow",
+  "modifications": null,
+  "audit": {
+    "logged": true,
+    "log_id": "audit_xyz789"
+  }
+}
+```
+
+<Warning>
+  Hook scripts that set `fail_open: false` (the default) will block agent actions if they fail or time out. For compliance hooks, this is the correct behavior — a failed compliance check should prevent the action. For non-critical hooks like telemetry, set `fail_open: true`.
+</Warning>

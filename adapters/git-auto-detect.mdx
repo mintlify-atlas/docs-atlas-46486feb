@@ -1,0 +1,102 @@
+---
+title: "Git auto-detect runner"
+description: "Clone a git repository, automatically detect the best adapter from its contents, and run the agent — all in one command."
+---
+
+The `git` adapter is a meta-runner. It clones a repository using the git caching layer, reads the agent definition to detect which framework the repo was built for, and then delegates to the appropriate adapter. This is the simplest way to run an agent from a git URL when you don't know or care which framework it targets.
+
+```bash
+gitagent run -a git -r https://github.com/user/my-agent -p "Hello"
+```
+
+## How it works
+
+<Steps>
+  <Step title="Clone or resolve from cache">
+    The repo URL is resolved using the git caching layer. On the first run, the repo is cloned to `~/.gitagent/cache/<hash>/`. Subsequent runs reuse the cache unless `--refresh` or `--no-cache` is set.
+  </Step>
+  <Step title="Load the manifest">
+    `agent.yaml` is read from the cloned directory. If it does not exist, the runner exits with an error.
+  </Step>
+  <Step title="Detect the adapter">
+    The runner examines the repo contents in priority order (see the table below) to pick the best adapter.
+  </Step>
+  <Step title="Delegate to the detected adapter">
+    The selected adapter's runner is called with the same options (`--prompt`, `--refresh`, etc.). The git runner itself does not run any model or framework — it just prepares the directory and hands off.
+  </Step>
+</Steps>
+
+## Auto-detection priority
+
+The runner checks signals in this order and stops at the first match:
+
+| Priority | Signal | Detected adapter |
+|----------|--------|-----------------|
+| 1 | `.gitagent_adapter` file exists | Value in the file (e.g., `lyzr`, `github`) |
+| 2 | `model.preferred` starts with `claude` | `claude` |
+| 3 | `model.preferred` starts with `gpt`, `o1`, or `o3` | `openai` |
+| 4 | `CLAUDE.md` or `.claude/` directory exists | `claude` |
+| 5 | `.cursorrules` file exists | `openai` |
+| 6 | `crew.yaml` or `crewai.yaml` exists | `crewai` |
+| 7 | `.lyzr_agent_id` file exists | `lyzr` |
+| 8 | `.github_models` file exists | `github` |
+| 9 | *(fallback)* | `claude` |
+
+## Hint files
+
+You can pin the adapter choice by adding a hint file to your repository. This overrides all other signals.
+
+### .gitagent_adapter
+
+Create a `.gitagent_adapter` file at the root of your repo containing the adapter name:
+
+```
+lyzr
+```
+
+Valid values: `claude`, `openai`, `crewai`, `openclaw`, `nanobot`, `lyzr`, `github`, `prompt`.
+
+This is the recommended way to signal intent for repos designed for a specific platform. For example, an agent built for Lyzr Studio should include `.gitagent_adapter` containing `lyzr` so anyone who runs it with `-a git` gets the correct adapter automatically.
+
+### .github_models
+
+Creating a `.github_models` file (any content, or empty) at the repo root signals that the agent is designed for GitHub Models. The git runner detects this file at priority 8.
+
+## Caching behavior
+
+The git runner uses gitagent's shared git cache at `~/.gitagent/cache/<hash>/`. The hash is the first 16 characters of the SHA-256 of `{url}#{branch}`.
+
+| Flag | Behavior |
+|------|---------|
+| *(default)* | Clone once; reuse from cache on subsequent runs |
+| `--refresh` | Pull the latest changes into the existing cache entry |
+| `--no-cache` | Clone to a temp directory and delete it when the process exits |
+
+## Examples
+
+<CodeGroup>
+
+```bash auto-detect
+# Clone and auto-detect the best adapter
+gitagent run -a git -r https://github.com/user/my-agent -p "Hello"
+```
+
+```bash force a branch
+# Clone a specific branch, refresh the cache
+gitagent run -a git -r https://github.com/user/my-agent -b develop --refresh -p "Hello"
+```
+
+```bash no cache
+# Clone to a temp dir, delete on exit
+gitagent run -a git -r https://github.com/user/my-agent --no-cache -p "Hello"
+```
+
+</CodeGroup>
+
+<Note>
+The `git` adapter requires `--repo` (`-r`). It cannot be used with `--dir` because there is nothing to clone from a local directory — use the appropriate adapter directly instead.
+</Note>
+
+<Tip>
+Add a `.gitagent_adapter` file to your repo to make the intended adapter explicit. This eliminates any ambiguity and makes it safe for others to run your agent with `-a git` without needing to know which framework you use.
+</Tip>

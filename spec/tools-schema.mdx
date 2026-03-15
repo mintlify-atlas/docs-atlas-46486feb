@@ -1,0 +1,140 @@
+---
+title: "Tool definition schema"
+description: "Complete reference for the tools/*.yaml schema — input and output schemas, implementation types, and annotations."
+---
+
+Tools are MCP-compatible definitions stored in `tools/<name>.yaml`. They describe what a tool does, what inputs it accepts, what it returns, how it is implemented, and metadata about its behavior. The JSON schema is at [`spec/schemas/tool.schema.json`](https://github.com/open-gitagent/gitagent/blob/main/spec/schemas/tool.schema.json).
+
+## Required fields
+
+<ParamField path="name" type="string" required>
+  Tool identifier. Pattern: `^[a-z][a-z0-9-]*$`. Must match the filename without extension.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Human-readable description of what the tool does. Minimum 1 character.
+</ParamField>
+
+<ParamField path="input_schema" type="object" required>
+  JSON Schema describing the tool's input parameters. Must have `type: object` and a `properties` map. Each property requires a `type`.
+</ParamField>
+
+## Optional fields
+
+<ParamField path="version" type="string">
+  Semantic version. Pattern: `^X.Y.Z[-prerelease][+build]$`.
+</ParamField>
+
+<ParamField path="output_schema" type="object">
+  JSON Schema describing the tool's output format. Recommended for MCP compliance.
+</ParamField>
+
+## `implementation` section
+
+<ParamField path="implementation.type" type="enum" required>
+  Implementation type. One of: `script` (local executable), `mcp_server` (MCP server tool), `http` (REST API endpoint).
+</ParamField>
+
+<ParamField path="implementation.path" type="string">
+  Path to the implementation script, relative to `tools/`. Required when `type` is `script`.
+</ParamField>
+
+<ParamField path="implementation.runtime" type="enum">
+  Script runtime environment. One of: `node`, `python3`, `bash`, `deno`, `ruby`, `go`. Required when `type` is `script`.
+</ParamField>
+
+<ParamField path="implementation.url" type="string (uri)">
+  HTTP endpoint or MCP server URL. Required when `type` is `mcp_server` or `http`.
+</ParamField>
+
+<ParamField path="implementation.method" type="enum">
+  HTTP method. One of: `GET`, `POST`, `PUT`, `DELETE`. Required when `type` is `http`.
+</ParamField>
+
+<ParamField path="implementation.headers" type="object">
+  HTTP headers as string key-value pairs. Used when `type` is `http`.
+</ParamField>
+
+<ParamField path="implementation.timeout" type="integer">
+  Timeout in seconds. Minimum: `1`.
+</ParamField>
+
+## `annotations` section
+
+Annotations provide metadata about the tool's behavior and are used by the runtime to make decisions about confirmation prompts, cost estimation, and compliance hooks.
+
+<ParamField path="annotations.requires_confirmation" type="boolean">
+  Whether the tool requires user confirmation before execution. Default: `false`.
+</ParamField>
+
+<ParamField path="annotations.read_only" type="boolean">
+  Whether the tool only reads data and has no side effects. Default: `false`.
+</ParamField>
+
+<ParamField path="annotations.cost" type="enum">
+  Estimated cost per invocation. One of: `none`, `low`, `medium`, `high`.
+</ParamField>
+
+<ParamField path="annotations.compliance_sensitive" type="boolean">
+  Whether the tool interacts with regulated data or systems. Default: `false`.
+</ParamField>
+
+<ParamField path="annotations.idempotent" type="boolean">
+  Whether the tool can be safely retried without side effects. Default: `false`.
+</ParamField>
+
+## Referencing tools in agent.yaml
+
+Tools are enabled by listing their names (without extension) in the `tools` array in `agent.yaml`:
+
+```yaml
+tools:
+  - search-regulations
+  - generate-report
+```
+
+All referenced tool names must exist as files in `tools/`. Validation fails if a referenced tool is missing.
+
+## Full example
+
+```yaml
+name: search-regulations
+description: Search FINRA and SEC regulatory databases
+version: 1.0.0
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+      description: Search query
+    framework:
+      type: string
+      enum: [finra, sec, federal_reserve, cfpb]
+    date_range:
+      type: object
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+  required: [query]
+output_schema:
+  type: object
+  properties:
+    results:
+      type: array
+      items:
+        type: object
+        properties:
+          title: { type: string }
+          citation: { type: string }
+          excerpt: { type: string }
+          url: { type: string }
+implementation:
+  type: script
+  path: search-regulations.py
+  runtime: python3
+  timeout: 30
+annotations:
+  requires_confirmation: false
+  read_only: true
+  cost: low
+```

@@ -1,0 +1,126 @@
+---
+title: "GitAgent"
+description: "A framework-agnostic, git-native standard for defining AI agents. Clone a repo, get an agent."
+---
+
+<img
+  src="https://media.brand.dev/7d477386-50ed-4abb-8893-75957aab2290.png"
+  alt="GitAgent"
+  style={{ width: "80px", marginBottom: "24px" }}
+/>
+
+# Your repository becomes your agent
+
+GitAgent is an open standard and CLI tool that lets you define AI agents as git repositories. Every agent lives in a folder — version-controlled, portable, and framework-agnostic. Clone any GitAgent repo and you have a fully working agent definition, ready to run on Claude Code, OpenAI, CrewAI, Lyzr, GitHub Models, or any other framework.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create, validate, and run your first agent in under five minutes
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli/init">
+    Every command, flag, and option documented with real examples
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/concepts/overview">
+    Understand the directory structure, manifest, skills, and compliance model
+  </Card>
+  <Card title="Specification" icon="file-code" href="/spec/overview">
+    The full gitagent v0.1.0 spec — schemas, validation rules, regulatory reference
+  </Card>
+</CardGroup>
+
+## Why GitAgent?
+
+Every AI framework has its own structure. There is no universal, portable way to define an agent that works across Claude Code, OpenAI, LangChain, CrewAI, and AutoGen. GitAgent fixes that.
+
+<CardGroup cols={2}>
+  <Card title="Git-native" icon="code-branch">
+    Version control, branching, diffing, and collaboration are built in. Every agent change is a git commit.
+  </Card>
+  <Card title="Framework-agnostic" icon="arrows-left-right">
+    Define once, export to any framework with adapters. One agent definition runs everywhere.
+  </Card>
+  <Card title="Compliance-ready" icon="shield-check">
+    First-class support for FINRA, Federal Reserve, SEC, and CFPB regulatory requirements baked directly into the manifest.
+  </Card>
+  <Card title="Composable" icon="puzzle-piece">
+    Agents can extend parent agents, declare dependencies, and delegate to sub-agents — just like software packages.
+  </Card>
+</CardGroup>
+
+## How it works
+
+An agent is fully described by files in a git repository. Only two files are required:
+
+```
+my-agent/
+├── agent.yaml    # Manifest — name, version, model, skills, compliance
+└── SOUL.md       # Identity — personality, values, communication style
+```
+
+Add more as your agent grows:
+
+```
+my-agent/
+├── agent.yaml          # [REQUIRED] Manifest
+├── SOUL.md             # [REQUIRED] Identity
+├── RULES.md            # Hard constraints and safety boundaries
+├── DUTIES.md           # Segregation of duties policy
+├── skills/             # Reusable capability modules
+├── tools/              # MCP-compatible tool definitions
+├── knowledge/          # Reference documents
+├── memory/             # Persistent cross-session state
+├── workflows/          # Multi-step procedures
+├── hooks/              # Lifecycle event handlers
+├── agents/             # Sub-agent definitions
+└── compliance/         # Regulatory artifacts
+```
+
+## Get started
+
+<Steps>
+  <Step title="Install GitAgent">
+    ```bash
+    npm install -g gitagent
+    ```
+  </Step>
+  <Step title="Create your first agent">
+    ```bash
+    gitagent init --template standard
+    ```
+  </Step>
+  <Step title="Validate it">
+    ```bash
+    gitagent validate
+    ```
+  </Step>
+  <Step title="Run it">
+    ```bash
+    gitagent run -d . --adapter claude
+    ```
+  </Step>
+</Steps>
+
+## Supported frameworks
+
+GitAgent can export and run agents on any of these platforms:
+
+| Adapter | Command |
+|---------|---------|
+| Claude Code | `gitagent run -a claude` |
+| OpenAI Agents SDK | `gitagent run -a openai` |
+| CrewAI | `gitagent run -a crewai` |
+| Lyzr Studio | `gitagent run -a lyzr` |
+| GitHub Models | `gitagent run -a github` |
+| OpenClaw | `gitagent run -a openclaw` |
+| Nanobot | `gitagent run -a nanobot` |
+| Auto-detect | `gitagent run -a git` |
+
+## Compliance-first design
+
+GitAgent has built-in support for running agents in regulated environments. Define risk tiers, supervision requirements, audit logging, model risk management, and segregation of duties directly in `agent.yaml` — then run `gitagent audit` to get a full regulatory checklist.
+
+Supported frameworks: **FINRA** (Rules 3110, 4511, 2210), **Federal Reserve** (SR 11-7, SR 23-4), **SEC** (Reg S-P, 17a-4), **CFPB** (Circular 2022-03).
+
+<Card title="Compliance overview" icon="scale-balanced" href="/compliance/overview">
+  Learn how GitAgent handles FINRA, Federal Reserve, SEC, and CFPB requirements
+</Card>

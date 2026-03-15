@@ -1,0 +1,148 @@
+---
+title: "Federal Reserve compliance"
+description: "How GitAgent maps to SR 11-7 model risk management and SR 23-4 third-party risk management — fields, examples, and validation checks."
+---
+
+When you include `federal_reserve` in the `frameworks` array, `gitagent validate --compliance` enforces Federal Reserve requirements for model risk and third-party risk. This page covers the two primary supervisory letters.
+
+## SR 11-7 — Model Risk Management
+
+SR 11-7 establishes a three-pillar framework for model risk: conceptual soundness, ongoing monitoring, and outcomes analysis. For AI agents, it requires that each model-based system be inventoried, validated on a defined cadence, and continuously monitored for degradation or drift.
+
+### Fields
+
+```yaml
+compliance:
+  model_risk:
+    inventory_id: MRM-2026-0047          # ID in the firm's model inventory
+    validation_cadence: quarterly        # annual | semi_annual | quarterly | monthly
+    validation_type: full                # full | targeted | change_based
+    conceptual_soundness: compliance/risk-assessment.md  # Link to documentation
+    ongoing_monitoring: true             # Continuous performance tracking
+    outcomes_analysis: true             # Back-testing against actual results
+    drift_detection: true               # Monitor for model degradation
+    parallel_testing: false             # Run alongside existing system
+```
+
+`model_risk` is **required** when `federal_reserve` is in `frameworks`. Validation fails with a `[SR 11-7]` error if the section is absent.
+
+`ongoing_monitoring: true` is also **required** — validation fails without it.
+
+The `validation_cadence` field maps to SR 11-7's independent review requirement. For `high` and `critical` risk tiers, a cadence of `quarterly` or more frequent is recommended. Annual or semi-annual cadences produce a warning.
+
+### Full model_risk example
+
+```yaml
+compliance:
+  risk_tier: high
+  frameworks:
+    - federal_reserve
+
+  model_risk:
+    inventory_id: MRM-2026-0047
+    validation_cadence: quarterly
+    validation_type: full
+    conceptual_soundness: compliance/risk-assessment.md
+    ongoing_monitoring: true
+    outcomes_analysis: true
+    drift_detection: true
+    parallel_testing: false
+```
+
+The `conceptual_soundness` field accepts a path to a documentation file — typically `compliance/risk-assessment.md`. The file is not parsed by the CLI; it records where your conceptual soundness documentation lives for audit purposes.
+
+### SR 11-7 validation schedule
+
+For `high` and `critical` agents, create a `compliance/validation-schedule.yaml` to document the SR 11-7 validation cadence:
+
+```yaml
+schedule:
+  - type: full_validation
+    description: "SR 11-7 three-pillar validation (conceptual soundness, ongoing monitoring, outcomes analysis)"
+    cadence: quarterly
+    owner: model-risk-team
+    sr_11_7_elements:
+      - conceptual_soundness
+      - ongoing_monitoring
+      - outcomes_analysis
+```
+
+## SR 23-4 — Third-Party Risk Management
+
+SR 23-4 (and the interagency guidance on third-party relationships) requires firms to perform due diligence on vendors and to monitor them on an ongoing basis. When an agent depends on external agents or services, that dependency relationship must be documented.
+
+### Fields
+
+Vendor management configuration lives in two places:
+
+**Agent-level** (applies to all third-party relationships for this agent):
+
+```yaml
+compliance:
+  vendor_management:
+    due_diligence_complete: true       # Vendor DD performed
+    soc_report_required: true          # SOC 2 report required from vendor
+    vendor_ai_notification: true       # Vendor must notify of AI changes
+    subcontractor_assessment: true     # Fourth-party risk assessed
+```
+
+**Dependency-level** (per-dependency metadata for each declared dependency):
+
+```yaml
+dependencies:
+  - name: fact-checker
+    source: https://github.com/org/fact-checker-agent.git
+    version: ^1.0.0
+    mount: agents/fact-checker
+    vendor_management:
+      due_diligence_date: "2026-01-15"
+      soc_report: true
+      risk_assessment: low
+```
+
+For agents using `finra` or `federal_reserve` frameworks, every dependency should include `vendor_management` metadata. `gitagent validate --compliance` warns for each dependency that lacks it, citing `[SR 23-4]`.
+
+### Full vendor_management example
+
+```yaml
+compliance:
+  risk_tier: high
+  frameworks:
+    - federal_reserve
+
+  vendor_management:
+    due_diligence_complete: true
+    soc_report_required: true
+    vendor_ai_notification: true
+    subcontractor_assessment: true
+
+dependencies:
+  - name: data-enrichment-service
+    source: https://github.com/vendor/enrichment-agent.git
+    version: ^2.1.0
+    mount: agents/enrichment
+    vendor_management:
+      due_diligence_date: "2026-03-01"
+      soc_report: true
+      risk_assessment: medium
+```
+
+## Validation checks for Federal Reserve
+
+| Check | Severity | Rule |
+|-------|----------|------|
+| `model_risk` section must be present | Error | SR 11-7 |
+| `model_risk.ongoing_monitoring` must be `true` | Error | SR 11-7 |
+| `high`/`critical` tier recommends `validation_cadence` of `quarterly` or more frequent | Warning | SR 11-7 |
+| Dependencies in `federal_reserve` agents recommend `vendor_management` metadata | Warning | SR 23-4 |
+
+## Federal Reserve rules reference
+
+From spec section 20:
+
+| Document | Subject | `agent.yaml` field |
+|----------|---------|-------------------|
+| SR 11-7 | Model Risk Management | `compliance.model_risk` |
+| SR 23-4 | Third-Party Risk Management | `dependencies.vendor_management` |
+| SR 21-8 | BSA/AML Model Risk | `compliance.model_risk` (for AML agents) |
+| CFPB Circular 2022-03 | Adverse Action + AI | `compliance.data_governance.lda_search` |

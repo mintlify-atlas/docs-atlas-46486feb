@@ -1,0 +1,174 @@
+---
+title: "Hooks"
+description: "Lifecycle event handlers in GitAgent — available events, hooks.yaml configuration, and the JSON stdin/stdout script protocol."
+---
+
+Hooks let you run custom scripts at specific points in the agent's lifecycle. They are the primary mechanism for audit logging, compliance enforcement, escalation, and custom observability.
+
+## Directory structure
+
+```
+hooks/
+├── hooks.yaml       # Hook definitions
+└── scripts/         # Hook script implementations
+    ├── audit-tool-call.sh
+    ├── check-communications-compliance.sh
+    └── escalate-error.sh
+```
+
+## hooks.yaml
+
+`hooks.yaml` maps lifecycle events to scripts. Each event key holds an array of hook entries.
+
+### Hook entry fields
+
+<ParamField path="script" type="string" required>
+  Path to the script file, relative to the `hooks/` directory.
+</ParamField>
+
+<ParamField path="description" type="string">
+  Human-readable description of what this hook does.
+</ParamField>
+
+<ParamField path="timeout" type="integer">
+  Maximum execution time for this hook script in seconds.
+</ParamField>
+
+<ParamField path="compliance" type="boolean">
+  Whether this hook is a compliance-critical script. Compliance hooks are flagged in audit reports.
+</ParamField>
+
+<ParamField path="fail_open" type="boolean">
+  If `true`, execution continues even if this hook script fails. If `false` (default), a hook failure halts the current operation.
+</ParamField>
+
+### Example hooks.yaml
+
+```yaml
+hooks:
+  on_session_start:
+    - script: scripts/load-compliance-context.sh
+      description: Load regulatory context and verify compliance configuration
+      timeout: 10
+      compliance: true
+      fail_open: false
+
+  pre_tool_use:
+    - script: scripts/audit-tool-call.sh
+      description: Log tool invocation to immutable audit trail
+      timeout: 5
+      compliance: true
+      fail_open: false
+
+  post_tool_use:
+    - script: scripts/validate-tool-output.sh
+      description: Check tool output for PII and compliance violations
+      timeout: 10
+      compliance: true
+      fail_open: false
+
+  pre_response:
+    - script: scripts/check-communications-compliance.sh
+      description: Verify response meets FINRA 2210 fair/balanced standards
+      timeout: 15
+      compliance: true
+      fail_open: false
+
+  post_response:
+    - script: scripts/audit-response.sh
+      description: Log response to audit trail with model version and timestamp
+      timeout: 5
+      compliance: true
+      fail_open: false
+
+  on_error:
+    - script: scripts/escalate-error.sh
+      description: Escalate errors to designated supervisor per FINRA 3110
+      timeout: 10
+      compliance: true
+      fail_open: true
+
+  on_session_end:
+    - script: scripts/finalize-audit-log.sh
+      description: Seal audit log and verify retention compliance
+      timeout: 15
+      compliance: true
+      fail_open: false
+```
+
+## Available hook events
+
+| Event | When it fires |
+|---|---|
+| `on_session_start` | Once at the beginning of a new session, before the first turn |
+| `pre_tool_use` | Immediately before the agent calls any tool |
+| `post_tool_use` | Immediately after a tool returns its result |
+| `pre_response` | Before the agent sends a response to the user |
+| `post_response` | After the agent's response has been delivered |
+| `on_error` | When any error occurs during execution |
+| `on_session_end` | Once at the end of a session, after the final turn |
+
+## Hook script protocol
+
+Hook scripts receive a JSON object on **stdin** and must write a JSON object to **stdout**. Scripts can be any executable: shell scripts, Python scripts, Node.js scripts, or compiled binaries.
+
+### Input format
+
+```json
+{
+  "event": "pre_tool_use",
+  "timestamp": "2026-02-16T12:00:00Z",
+  "data": {
+    "tool_name": "search-regulations",
+    "arguments": { "query": "FINRA Rule 3110" }
+  },
+  "session": {
+    "id": "sess_abc123",
+    "agent": "compliance-analyst",
+    "model_version": "claude-opus-4-6"
+  }
+}
+```
+
+### Output format
+
+```json
+{
+  "action": "allow",
+  "modifications": null,
+  "audit": {
+    "logged": true,
+    "log_id": "audit_xyz789"
+  }
+}
+```
+
+### Actions
+
+| Action | Effect |
+|---|---|
+| `allow` | Execution continues normally |
+| `block` | The current operation is halted. Use for policy violations. |
+| `modify` | The operation proceeds with modified parameters from `modifications`. |
+
+<Warning>
+Hooks with `fail_open: false` that return an error (non-zero exit code or malformed JSON) will **halt** the current operation. Use `fail_open: true` for hooks where a failure should not block the agent, such as non-critical logging.
+</Warning>
+
+## Claude Code hooks mapping
+
+When running with the `claude` adapter, GitAgent maps its hook events to Claude Code's hook system:
+
+| GitAgent event | Claude Code event |
+|---|---|
+| `on_session_start` | `PreToolUse` |
+| `pre_tool_use` | `PreToolUse` |
+| `post_tool_use` | `PostToolUse` |
+| `pre_response` | `PostToolUse` |
+| `post_response` | `PostToolUse` |
+| `on_error` | `PostToolUse` |
+| `on_session_end` | `PostToolUse` |
+
+<Note>
+The JSON schemas for `hooks.yaml` and the hook I/O protocol are at `spec/schemas/hooks.schema.json` and `spec/schemas/hook-io.schema.json`. Run `gitagent validate` to check your hook configuration.
+</Note>

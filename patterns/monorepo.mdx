@@ -1,0 +1,211 @@
+---
+title: "Shared context via monorepo"
+description: "Root-level context.md, skills/, and tools/ are automatically shared across every agent in the monorepo — no duplication, one source of truth."
+---
+
+When you run multiple agents in a single repository, GitAgent automatically makes root-level `skills/`, `tools/`, and knowledge files available to every agent. Agents that define the same skill locally shadow the root version; agents that don't define it locally inherit it from the root.
+
+This means you can define org-wide compliance skills, shared security tooling, or common knowledge documents once at the root level and have every agent pick them up automatically — without copying files.
+
+## Skill discovery and priority
+
+GitAgent discovers skills from multiple locations in priority order. In a monorepo, this means:
+
+| Priority | Path | Source |
+|---|---|---|
+| 1 (highest) | `<agent-dir>/skills/` | Agent-local — always wins |
+| 2 | `<agent-dir>/.agents/skills/` | agentskills.io standard |
+| 3 | `<agent-dir>/.claude/skills/` | Claude Code |
+| 4 | `<agent-dir>/.github/skills/` | GitHub |
+| 5 (lowest) | `~/.agents/skills/` | Personal (global) |
+
+<Note>
+Root-level `skills/` discovery in a monorepo works via the global `~/.agents/skills/` path or by structuring agents to inherit from a shared parent using `extends`. See the [inheritance and composition](/concepts/inheritance-composition) docs for details on using `extends` to share configuration across agents.
+</Note>
+
+## Monorepo layout
+
+A typical monorepo layout with shared root skills and three agents:
+
+```
+my-agent-repo/
+│
+│   # ── Shared root-level resources ─────────────────────────
+├── skills/
+│   ├── compliance-check/       # Shared across all agents
+│   │   └── SKILL.md
+│   ├── security-scan/          # Shared security skill
+│   │   ├── SKILL.md
+│   │   └── scripts/
+│   │       └── scan.sh
+│   └── pii-redaction/          # Shared PII handling skill
+│       └── SKILL.md
+│
+├── tools/
+│   ├── search-regulations.yaml # Shared tool definition
+│   └── audit-logger.yaml
+│
+├── knowledge/
+│   └── regulatory-reference.md # Shared reference doc
+│
+│   # ── Individual agents ────────────────────────────────────
+├── agents/
+│   ├── loan-originator/
+│   │   ├── agent.yaml          # Inherits from base-agent, uses shared skills
+│   │   ├── SOUL.md
+│   │   ├── RULES.md
+│   │   └── skills/
+│   │       └── loan-analysis/  # Agent-local skill (shadows root if same name)
+│   │           └── SKILL.md
+│   │
+│   ├── credit-reviewer/
+│   │   ├── agent.yaml
+│   │   ├── SOUL.md
+│   │   └── DUTIES.md           # Role: checker
+│   │
+│   └── compliance-auditor/
+│       ├── agent.yaml
+│       ├── SOUL.md
+│       └── DUTIES.md           # Role: auditor
+│
+│   # ── Shared base agent ─────────────────────────────────────
+├── base-agent/
+│   ├── agent.yaml              # Shared compliance config, model settings
+│   ├── SOUL.md
+│   ├── RULES.md
+│   └── DUTIES.md               # Root SOD policy
+│
+└── .github/
+    └── workflows/
+        └── ci.yml              # Validates all agents on push
+```
+
+## Sharing skills via extends
+
+The cleanest way to share skills, tools, and compliance config across all agents in a monorepo is to create a `base-agent` that every individual agent extends:
+
+```yaml
+# base-agent/agent.yaml
+spec_version: "0.1.0"
+name: base-agent
+version: 2.0.0
+description: Shared base configuration for all org agents
+
+skills:
+  - compliance-check
+  - security-scan
+  - pii-redaction
+
+tools:
+  - search-regulations
+  - audit-logger
+
+compliance:
+  risk_tier: high
+  frameworks:
+    - finra
+    - federal_reserve
+  supervision:
+    human_in_the_loop: conditional
+    kill_switch: true
+  recordkeeping:
+    audit_logging: true
+    retention_period: 7y
+    immutable: true
+```
+
+Each agent extends the base:
+
+```yaml
+# agents/loan-originator/agent.yaml
+spec_version: "0.1.0"
+name: loan-originator
+version: 1.0.0
+description: Initiates and processes loan applications
+
+extends: ../../base-agent
+
+# Agent-local skills are added to the inherited set
+skills:
+  - loan-analysis
+
+# These fields deep-merge with the base agent's compliance section
+compliance:
+  segregation_of_duties:
+    assignments:
+      loan-originator: [maker]
+```
+
+With `extends`, the `loan-originator` agent inherits all skills from `base-agent` (`compliance-check`, `security-scan`, `pii-redaction`) and adds its own `loan-analysis` skill on top.
+
+## Use cases for shared root skills
+
+<CardGroup cols={2}>
+  <Card title="Org-wide compliance rules" icon="scale-balanced">
+    A single `compliance-check` skill defines your organization's compliance standards. Every agent runs the same checks — no drift between teams.
+  </Card>
+  <Card title="Shared security scanning" icon="shield-halved">
+    A `security-scan` skill with detection scripts lives at the root. All agents that need security awareness pick it up automatically.
+  </Card>
+  <Card title="Common PII handling" icon="user-shield">
+    One `pii-redaction` skill ensures every agent handles personally identifiable information the same way — critical for Reg S-P compliance.
+  </Card>
+  <Card title="Regulatory reference knowledge" icon="book-open">
+    Root-level `knowledge/` documents (FINRA rules summaries, SR 11-7 guidance) are available to all agents without duplication.
+  </Card>
+</CardGroup>
+
+## Validating all agents in CI
+
+In a monorepo, validate every agent on push:
+
+```yaml
+name: Validate all agents
+
+on:
+  push:
+    branches: [main, staging, dev]
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  validate:
+    name: Validate ${{ matrix.agent }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        agent:
+          - agents/loan-originator
+          - agents/credit-reviewer
+          - agents/compliance-auditor
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install gitagent
+        run: npm install -g gitagent
+
+      - name: Validate ${{ matrix.agent }}
+        run: gitagent validate -d ${{ matrix.agent }} --compliance
+```
+
+This matrix strategy validates each agent in parallel and reports failures per agent — making it easy to identify which agent has a problem.
+
+## Installing shared skills globally
+
+For skills you want available across all agents on a developer's machine (not just within a single monorepo), install them globally:
+
+```bash
+# Install a shared skill globally
+gitagent skills install compliance-check --global
+
+# Globally installed skills land in ~/.agents/skills/
+# Every agent on the machine can discover them
+gitagent skills list
+```
+
+Global skills are useful for developer-tooling skills (like `code-review` or `security-scan`) that you want available in every project without committing them to a repo.

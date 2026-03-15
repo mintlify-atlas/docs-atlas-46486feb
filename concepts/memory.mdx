@@ -1,0 +1,123 @@
+---
+title: "Memory"
+description: "Persistent cross-session state in GitAgent — working memory, archive layers, update triggers, and memory.yaml configuration."
+---
+
+The `memory/` directory gives your agent persistent state that survives across sessions. Unlike context that lives only in the current conversation window, memory is written to files and read back at the start of each new session.
+
+## Directory structure
+
+```
+memory/
+├── MEMORY.md       # Working memory (max 200 lines)
+├── memory.yaml     # Memory configuration
+└── archive/        # Historical memory snapshots
+```
+
+## MEMORY.md — working memory
+
+`MEMORY.md` is the agent's primary working memory buffer. It is a plain markdown file that the agent reads at the start of a session and updates as new information accumulates.
+
+**The file has a hard maximum of 200 lines.** When the buffer approaches this limit, older entries should be archived to `archive/` and the file trimmed. This limit ensures that working memory stays within a manageable token budget.
+
+Typical content includes:
+
+- Key decisions made in recent sessions
+- Important context about the current project or user
+- Open tasks and follow-ups
+- Patterns or preferences the agent has learned
+
+## memory.yaml — configuration
+
+`memory.yaml` configures how memory is stored, updated, and archived.
+
+### Fields
+
+<ParamField path="layers" type="object[]">
+  Memory layers defining storage locations and formats. Each layer has `name`, `path`, `max_lines`, and `format` fields.
+</ParamField>
+
+<ParamField path="layers[].name" type="string">
+  Layer identifier. The `working` layer is the primary buffer.
+</ParamField>
+
+<ParamField path="layers[].path" type="string">
+  File path (for single-file layers) or directory path (for archive layers).
+</ParamField>
+
+<ParamField path="layers[].max_lines" type="integer">
+  Maximum number of lines for this layer. The working layer default is 200.
+</ParamField>
+
+<ParamField path="layers[].format" type="string">
+  Storage format: `markdown` or `yaml`.
+</ParamField>
+
+<ParamField path="layers[].rotation" type="string">
+  Archive rotation period: `daily`, `weekly`, or `monthly`.
+</ParamField>
+
+<ParamField path="update_triggers" type="string[]">
+  Events that trigger a memory write. Values: `on_session_end`, `on_explicit_save`.
+</ParamField>
+
+<ParamField path="archive_policy.max_entries" type="integer">
+  Maximum number of archived entries to retain.
+</ParamField>
+
+<ParamField path="archive_policy.compress_after" type="string">
+  Duration after which archive entries are compressed. Example: `90d`.
+</ParamField>
+
+<ParamField path="archive_policy.retention_period" type="string">
+  How long to retain archived entries. Example: `7y`. Use this field for compliance-driven retention requirements.
+</ParamField>
+
+### Full example
+
+```yaml
+layers:
+  - name: working
+    path: MEMORY.md
+    max_lines: 200
+    format: markdown
+  - name: archive
+    path: archive/
+    format: yaml
+    rotation: monthly
+update_triggers:
+  - on_session_end
+  - on_explicit_save
+archive_policy:
+  max_entries: 1000
+  compress_after: 90d
+  retention_period: 7y
+```
+
+## The archive/ directory
+
+The `archive/` directory holds historical memory snapshots. When the working memory buffer fills up or a rotation trigger fires, the current contents of `MEMORY.md` are written to an archive file with a timestamp, and the working buffer is reset.
+
+Archive files are in YAML format by default and are named by rotation period (e.g. `2026-02.yaml` for monthly rotation).
+
+## How memory is used at runtime
+
+<Steps>
+  <Step title="Session start">
+    The runtime reads `MEMORY.md` and injects it into the system prompt. The agent sees its own accumulated context from previous sessions.
+  </Step>
+  <Step title="During the session">
+    The agent can reference and update its mental model. Any explicit save trigger (e.g. a tool call) writes updated memory back to `MEMORY.md`.
+  </Step>
+  <Step title="Session end">
+    If `on_session_end` is in `update_triggers`, the agent writes a summary of the session's key learnings and decisions to `MEMORY.md`. If the file is near the 200-line limit, the oldest entries rotate to `archive/`.
+  </Step>
+</Steps>
+
+<Warning>
+The `memory/` directory is not inherited when using `extends`. Each agent maintains isolated memory. This is by design — a child agent's working state should not bleed into a parent agent's memory.
+</Warning>
+
+<Note>
+The JSON schema for `memory.yaml` is at `spec/schemas/memory.schema.json`. Run `gitagent validate` to check your memory configuration.
+</Note>

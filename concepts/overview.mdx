@@ -1,0 +1,97 @@
+---
+title: "Core concepts overview"
+description: "Understand the GitAgent model — how a git repository becomes a portable, framework-agnostic AI agent."
+---
+
+GitAgent is built on a single idea: **your repository is your agent**. Drop a handful of files into any git repo and it becomes a complete, portable agent definition that runs on any framework.
+
+This section walks through every concept you need to understand that model — from the files that make up an agent, to skills, tools, memory, hooks, and composition.
+
+## The "your repo is your agent" concept
+
+Traditional AI agent frameworks lock your agent definition inside their own format. Moving from one framework to another means rebuilding from scratch.
+
+GitAgent separates the _definition_ of an agent from its _execution_. An agent definition is just files in a directory:
+
+```
+my-agent/
+├── agent.yaml    # who I am and how I should run
+└── SOUL.md       # my identity and personality
+```
+
+That's it. Those two files are a valid, runnable agent. You version it with git, share it like any open-source project, and run it on Claude Code, OpenAI, CrewAI, Lyzr, GitHub Models, or any other framework using `gitagent run`.
+
+Because the definition is just files, you get everything git gives you for free: commit history, branches, diffs, pull requests, tags, and forks.
+
+## The four core principles
+
+<CardGroup cols={2}>
+  <Card title="Git-native" icon="code-branch">
+    Every agent lives in a git repository. Version control, branching, diffing, and collaboration are built in. Roll back a broken prompt, revert a bad skill, or run `git blame` to trace every line to its author.
+  </Card>
+  <Card title="Framework-agnostic" icon="arrows-left-right">
+    Define your agent once and export it to any framework with adapters. The same `agent.yaml` and `SOUL.md` runs on Claude Code, OpenAI Agents SDK, CrewAI, Lyzr Studio, GitHub Models, and more.
+  </Card>
+  <Card title="Compliance-ready" icon="shield-check">
+    First-class support for FINRA, Federal Reserve, SEC, and CFPB is baked directly into `agent.yaml`. Define risk tiers, supervision requirements, audit logging, model risk management, and segregation of duties without plugins or third-party tools.
+  </Card>
+  <Card title="Composable" icon="puzzle-piece">
+    Agents can extend parent agents, declare dependencies on external agents, and delegate tasks to sub-agents — the same composition model as software packages.
+  </Card>
+</CardGroup>
+
+## How agent files map to behavior
+
+Every file in a GitAgent directory serves a specific role at runtime:
+
+| File / Directory | What it controls |
+|---|---|
+| `agent.yaml` | Identity, model preferences, capability lists, runtime limits, compliance config |
+| `SOUL.md` | Personality, tone, values, domain expertise — who the agent *is* |
+| `RULES.md` | Hard constraints — what the agent must always and must never do |
+| `DUTIES.md` | Segregation of duties policy and role boundaries |
+| `skills/` | Reusable capability modules the agent can activate |
+| `tools/` | MCP-compatible tool definitions the agent can call |
+| `workflows/` | Multi-step procedures the agent can execute |
+| `knowledge/` | Reference documents the agent can consult |
+| `memory/` | Persistent state that survives across sessions |
+| `hooks/` | Lifecycle event handlers (audit logging, compliance checks, escalation) |
+| `agents/` | Sub-agent definitions for delegation |
+| `compliance/` | Regulatory artifacts for audited environments |
+
+When you run `gitagent export` or `gitagent run`, the CLI reads these files and assembles them into a system prompt or framework-specific configuration. Nothing is hard-coded — the files are the agent.
+
+## Explore each concept
+
+<CardGroup cols={2}>
+  <Card title="Directory structure" icon="folder" href="/concepts/directory-structure">
+    Complete reference of every file and directory, with requirement levels and purpose
+  </Card>
+  <Card title="Agent manifest" icon="file-code" href="/concepts/agent-manifest">
+    Full `agent.yaml` reference — every field, every section, with examples
+  </Card>
+  <Card title="SOUL.md and RULES.md" icon="id-card" href="/concepts/soul-and-rules">
+    How to define agent identity, personality, and hard behavioral constraints
+  </Card>
+  <Card title="Skills" icon="sparkles" href="/concepts/skills">
+    Reusable capability modules — format, discovery, installation, and progressive loading
+  </Card>
+  <Card title="Tools" icon="wrench" href="/concepts/tools">
+    MCP-compatible tool definitions — schema, annotations, and implementation
+  </Card>
+  <Card title="Workflows" icon="diagram-project" href="/concepts/workflows">
+    Multi-step procedures in structured YAML or narrative markdown format
+  </Card>
+  <Card title="Memory" icon="database" href="/concepts/memory">
+    Persistent cross-session state — working memory, archives, and update triggers
+  </Card>
+  <Card title="Hooks" icon="bolt" href="/concepts/hooks">
+    Lifecycle event handlers for audit logging, compliance checks, and escalation
+  </Card>
+  <Card title="Sub-agents" icon="users" href="/concepts/sub-agents">
+    Full and lightweight sub-agent definitions, delegation modes, and handoff workflows
+  </Card>
+  <Card title="Inheritance and composition" icon="sitemap" href="/concepts/inheritance-composition">
+    Extending parent agents, declaring dependencies, and composing agent systems
+  </Card>
+</CardGroup>

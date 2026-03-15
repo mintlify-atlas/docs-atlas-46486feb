@@ -1,0 +1,128 @@
+---
+title: "Minimal example"
+description: "A two-file hello world that demonstrates the only files required by the gitagent spec."
+---
+
+The minimal example is the simplest valid gitagent. It contains exactly two files — `agent.yaml` and `SOUL.md` — and nothing else. Use it to understand what the spec actually requires before layering in skills, tools, or compliance configuration.
+
+## Directory structure
+
+```text
+examples/minimal/
+├── agent.yaml
+└── SOUL.md
+```
+
+Every other directory and file in the spec is optional. If you only have these two files and they are valid, `gitagent validate` will pass.
+
+## File contents
+
+### agent.yaml
+
+The manifest uses only the four required-by-convention fields: `spec_version`, `name`, `version`, and `description`. No model, no skills, no tools.
+
+```yaml agent.yaml
+spec_version: "0.1.0"
+name: hello-agent
+version: 0.1.0
+description: A minimal hello world agent
+```
+
+### SOUL.md
+
+The identity file. It must exist, must not be empty, and must contain real content (not just a heading).
+
+```markdown SOUL.md
+# Soul
+
+I am a friendly assistant. I help with general questions and tasks, communicating in a clear and approachable manner.
+```
+
+## Running the example
+
+<Steps>
+  <Step title="Validate the agent">
+    Check the two files against the gitagent spec:
+
+    ```bash
+    gitagent validate -d ./examples/minimal
+    ```
+
+    Expected output:
+
+    ```text
+    Validating gitagent
+    Directory: ./examples/minimal
+    ────────────────────────────────
+    ✔ agent.yaml — valid
+    ✔ SOUL.md — valid
+    ────────────────────────────────
+    ✔ Validation passed (0 warnings)
+    ```
+  </Step>
+
+  <Step title="Inspect the agent">
+    Print a formatted summary of everything gitagent can read from the two files:
+
+    ```bash
+    gitagent info -d ./examples/minimal
+    ```
+
+    The output shows the name, version, description, and a preview of `SOUL.md`. Model, skills, tools, and compliance sections are absent because none are defined.
+  </Step>
+
+  <Step title="Export the system prompt">
+    Generate a portable system prompt from the agent definition:
+
+    ```bash
+    gitagent export --format system-prompt -d ./examples/minimal
+    ```
+
+    Because there are no skills, rules, or knowledge documents, the output is just the agent header and the `SOUL.md` content:
+
+    ```text
+    # hello-agent v0.1.0
+
+    # Soul
+
+    I am a friendly assistant. I help with general questions and tasks,
+    communicating in a clear and approachable manner.
+    ```
+  </Step>
+
+  <Step title="Run with Claude">
+    Spin up an interactive session with the Claude adapter (requires the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)):
+
+    ```bash
+    gitagent run -d ./examples/minimal
+    ```
+
+    gitagent passes the system prompt to `claude` via `--append-system-prompt` and opens an interactive session.
+  </Step>
+</Steps>
+
+## What each file contributes
+
+<CardGroup cols={2}>
+  <Card title="agent.yaml" icon="file">
+    Declares the agent's identity: name, version, description, and spec version. This is the only file with a strict JSON schema.
+  </Card>
+  <Card title="SOUL.md" icon="heart">
+    Defines the agent's personality, communication style, and values. Injected as the first section of every system prompt.
+  </Card>
+</CardGroup>
+
+## What to add next
+
+The minimal example is a starting point, not a finished agent. The most common next steps are:
+
+- **Add `RULES.md`** — Hard constraints the agent must always follow and must never do. Injected after `SOUL.md` in the system prompt.
+- **Add a skill** — Create `skills/my-skill/SKILL.md` with frontmatter and instructions, then list it in `agent.yaml` under `skills:`.
+- **Set a model** — Add a `model:` block to `agent.yaml` with a `preferred` model name.
+- **Add tools** — Define MCP-compatible tool schemas in `tools/*.yaml` and list them under `tools:` in `agent.yaml`.
+
+The [standard example](/examples/standard) adds all of these to build a real code review agent.
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Walk through scaffolding, validating, and running a standard agent step by step.
+</Card>

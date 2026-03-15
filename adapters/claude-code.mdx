@@ -1,0 +1,129 @@
+---
+title: "Claude Code adapter"
+description: "Run a gitagent agent interactively with Claude Code CLI — with model selection, tool permissions, hooks, and sub-agent support."
+---
+
+The `claude` adapter translates a gitagent directory into Claude Code CLI arguments and spawns an interactive `claude` session. It is the default adapter when you run `gitagent run` without specifying `-a`.
+
+## Requirements
+
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed globally (`npm install -g @anthropic-ai/claude-code`)
+- Authenticated with your Anthropic account (run `claude` once to complete auth)
+
+## How it works
+
+<Steps>
+  <Step title="Build the system prompt">
+    The adapter calls `exportToSystemPrompt`, which concatenates `SOUL.md`, `RULES.md`, skills, knowledge documents marked `always_load`, compliance constraints, and working memory into a single markdown document.
+  </Step>
+  <Step title="Collect CLI arguments">
+    The adapter maps each section of `agent.yaml` to the corresponding Claude Code CLI flag. All flags are assembled into an argument array before the process is spawned.
+  </Step>
+  <Step title="Map hooks to settings">
+    If `hooks/hooks.yaml` exists, gitagent maps each hook event to the closest Claude Code lifecycle event and writes a temporary settings JSON file. The path is passed via `--settings`.
+  </Step>
+  <Step title="Spawn the claude process">
+    Claude Code is launched with `stdio: 'inherit'`, so the terminal is fully interactive. The agent directory becomes the working directory. Temp files are cleaned up after the process exits.
+  </Step>
+</Steps>
+
+## CLI flag mapping
+
+The following table shows how `agent.yaml` fields map to Claude Code CLI flags:
+
+| `agent.yaml` field | Claude Code flag | Notes |
+|--------------------|-----------------|-------|
+| `model.preferred` | `--model` | Passed as-is |
+| `model.fallback[0]` | `--fallback-model` | Only the first fallback is used |
+| `runtime.max_turns` | `--max-turns` | Converted to string |
+| `compliance.supervision.human_in_the_loop: always` | `--permission-mode plan` | Also prints an info message |
+| Skills' `allowed-tools` + `tools/*.yaml` names | `--allowedTools` | One flag per tool, deduplicated |
+| `agents/` directory | `--agents` | Serialized as JSON; sub-agent `SOUL.md` is included in instructions |
+| `knowledge/` and `skills/` directories | `--add-dir` | Adds directories to Claude Code's workspace |
+| `hooks/hooks.yaml` (mapped) | `--settings` | Written to a temp JSON file |
+| Assembled system prompt | `--append-system-prompt` | Passed last, layers on top of Claude Code defaults |
+
+<Note>
+`--append-system-prompt` is always the final argument. This prevents the long system prompt string from interfering with argument parsing of other flags.
+</Note>
+
+## Hooks mapping
+
+gitagent hook events do not map 1:1 to Claude Code lifecycle events. The adapter applies the following mapping when building the settings file:
+
+| gitagent hook | Claude Code event |
+|---------------|------------------|
+| `on_session_start` | `PreToolUse` |
+| `pre_tool_use` | `PreToolUse` |
+| `post_tool_use` | `PostToolUse` |
+| `pre_response` | `PostToolUse` |
+| `post_response` | `PostToolUse` |
+| `on_error` | `PostToolUse` |
+| `on_session_end` | `PostToolUse` |
+
+Each hook script is invoked as `bash <script-path>`. Scripts that don't exist on disk are silently skipped.
+
+## Human-in-the-loop mode
+
+When your agent's compliance configuration sets `human_in_the_loop: always`, the adapter automatically adds `--permission-mode plan` to the Claude Code invocation. This requires the user to approve every action before Claude Code executes it.
+
+```yaml
+# agent.yaml
+compliance:
+  supervision:
+    human_in_the_loop: always
+```
+
+```bash
+# Equivalent Claude Code flag added automatically
+--permission-mode plan
+```
+
+## Export format
+
+You can inspect what the Claude Code adapter generates without running it:
+
+```bash
+# Export CLAUDE.md format to a file
+gitagent export -f claude-code -d ./my-agent -o CLAUDE.md
+
+# Print to stdout
+gitagent export -f claude-code -d ./my-agent
+```
+
+The exported `CLAUDE.md` includes the agent name and description, `SOUL.md` content, `RULES.md` content, skill instructions with allowed tools, model preference as an HTML comment, and compliance constraints.
+
+## Examples
+
+<CodeGroup>
+
+```bash local directory (interactive)
+# Interactive session — no prompt needed
+gitagent run -d ./my-agent
+```
+
+```bash git repo
+# Clone and run interactively
+gitagent run -r https://github.com/user/my-agent
+```
+
+```bash one-shot prompt
+# Send a prompt and exit
+gitagent run -d ./my-agent -p "Review the authentication module for security issues"
+```
+
+```bash explicit adapter
+# claude is the default but can be set explicitly
+gitagent run -d ./my-agent -a claude -p "Hello"
+```
+
+```bash specific branch
+# Clone a non-default branch
+gitagent run -r https://github.com/user/my-agent -b develop
+```
+
+</CodeGroup>
+
+<Warning>
+The `claude` binary is resolved by scanning `PATH` and preferring any path that does not contain `node_modules`. This avoids conflicts when running gitagent via `npx`, which may place a different `claude` binary on the path.
+</Warning>

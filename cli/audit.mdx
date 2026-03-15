@@ -1,0 +1,197 @@
+---
+title: gitagent audit
+description: Generate a section-by-section compliance audit report for a gitagent repository.
+---
+
+`gitagent audit` reads `agent.yaml` and the compliance directory, then prints a full regulatory audit report with pass/fail/warning indicators for every check.
+
+## Synopsis
+
+```bash
+gitagent audit [options]
+```
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir <dir>` | `.` | Agent directory to audit |
+
+<Note>
+If `agent.yaml` contains no `compliance` section, the audit prints a warning and exits. Add a `compliance` block to enable all audit checks.
+</Note>
+
+## Report sections
+
+The audit report covers 10 sections, each mapped to a regulatory rule or internal control.
+
+### 1. Risk classification
+
+Displays the configured `risk_tier` and list of applicable `frameworks` from `agent.yaml`.
+
+### 2. Supervision (FINRA Rule 3110)
+
+| Check | Pass condition |
+|-------|----------------|
+| Designated supervisor assigned | `supervision.designated_supervisor` is set |
+| Review cadence defined | `supervision.review_cadence` is set |
+| Human-in-the-loop configured | `supervision.human_in_the_loop` is set and not `none` |
+| Escalation triggers defined | `supervision.escalation_triggers` has at least one entry |
+| Override capability enabled | `supervision.override_capability: true` |
+| Kill switch enabled | `supervision.kill_switch: true` |
+| HITL is `always` or `conditional` for high/critical risk | Checked only for `high`/`critical` risk tiers |
+
+### 3. Recordkeeping (FINRA Rule 4511 / SEC 17a-4)
+
+| Check | Pass condition |
+|-------|----------------|
+| Audit logging enabled | `recordkeeping.audit_logging: true` |
+| Log format specified | `recordkeeping.log_format` is set |
+| Retention period defined | `recordkeeping.retention_period` is set |
+| Prompt/response logging | `log_contents` includes `prompts_and_responses` |
+| Tool call logging | `log_contents` includes `tool_calls` |
+| Decision pathway logging | `log_contents` includes `decision_pathways` |
+| Model version tracking | `log_contents` includes `model_version` |
+| Timestamp logging | `log_contents` includes `timestamps` |
+| Immutable logs | `recordkeeping.immutable: true` |
+
+Additionally warns if retention is below the FINRA minimum (6 years) or SEC minimum (3 years).
+
+### 4. Model risk management (SR 11-7)
+
+| Check | Pass condition |
+|-------|----------------|
+| Model inventory ID assigned | `model_risk.inventory_id` is set |
+| Validation cadence defined | `model_risk.validation_cadence` is set |
+| Validation type specified | `model_risk.validation_type` is set |
+| Conceptual soundness documented | `model_risk.conceptual_soundness` is set |
+| Ongoing monitoring enabled | `model_risk.ongoing_monitoring: true` |
+| Outcomes analysis enabled | `model_risk.outcomes_analysis: true` |
+| Drift detection enabled | `model_risk.drift_detection: true` |
+
+If the `federal_reserve` framework is configured but `model_risk` is absent, an error is printed.
+
+### 5. Data governance (Reg S-P, CFPB)
+
+| Check | Pass condition |
+|-------|----------------|
+| PII handling policy defined | `data_governance.pii_handling` is set |
+| PII handling is restrictive | `pii_handling` is not `allow` |
+| Data classification set | `data_governance.data_classification` is set |
+| Consent requirement configured | `data_governance.consent_required` is set |
+| Cross-border assessment done | `data_governance.cross_border` is set |
+| Bias testing enabled | `data_governance.bias_testing: true` |
+| LDA search configured | `data_governance.lda_search` is set |
+
+### 6. Communications compliance (FINRA Rule 2210)
+
+| Check | Pass condition |
+|-------|----------------|
+| Communication type classified | `communications.type` is set |
+| Fair and balanced enforced | `communications.fair_balanced: true` |
+| No misleading enforced | `communications.no_misleading: true` |
+| Pre-review requirement assessed | `communications.pre_review_required` is set |
+| Disclosure requirements assessed | `communications.disclosures_required` is set |
+
+Warns if `communications.type` is `retail` and `pre_review_required` is not set (FINRA 2210(b)(1)).
+
+### 7. Vendor management (SR 23-4)
+
+| Check | Pass condition |
+|-------|----------------|
+| Due diligence complete | `vendor_management.due_diligence_complete: true` |
+| SOC report requirement assessed | `vendor_management.soc_report_required` is set |
+| Vendor AI notification required | `vendor_management.vendor_ai_notification: true` |
+| Subcontractor assessment done | `vendor_management.subcontractor_assessment: true` |
+
+If no `vendor_management` section is configured but `dependencies` exist, a warning is printed.
+
+### 8. Segregation of duties
+
+| Check | Pass condition |
+|-------|----------------|
+| Roles defined (≥2) | `segregation_of_duties.roles` has at least 2 entries |
+| Conflict matrix defined | `segregation_of_duties.conflicts` has at least one pair |
+| Role assignments configured | `segregation_of_duties.assignments` is non-empty |
+| State isolation configured | `segregation_of_duties.isolation.state` is set |
+| State isolation is full | `isolation.state: full` |
+| Credential segregation configured | `isolation.credentials` is set |
+| Credentials are separate | `isolation.credentials: separate` |
+| Handoff workflows defined | `segregation_of_duties.handoffs` is non-empty |
+| Enforcement is strict | `segregation_of_duties.enforcement: strict` |
+
+Also detects and reports any SOD violations (an agent holding two conflicting roles).
+
+### 9. Compliance artifacts
+
+| Check | Pass condition |
+|-------|----------------|
+| `compliance/` directory exists | Directory present |
+| `compliance/regulatory-map.yaml` exists | File present |
+| `compliance/validation-schedule.yaml` exists | File present |
+| `compliance/risk-assessment.md` exists | File present |
+| `RULES.md` exists | File present |
+
+### 10. Audit hooks
+
+| Check | Pass condition |
+|-------|----------------|
+| `hooks/hooks.yaml` exists | File present |
+| Compliance hooks configured | `hooks.yaml` contains `compliance: true` |
+
+## Pass/fail/warning indicators
+
+| Indicator | Meaning |
+|-----------|---------|
+| `✔` (green) | Check passed |
+| `⚠` (yellow) | Warning — recommended but not required, or below a regulatory minimum |
+| `✘` / `ERROR` (red) | Required check failed |
+
+## Examples
+
+```bash
+# Audit the agent in the current directory
+gitagent audit
+
+# Audit a specific agent
+gitagent audit -d ./examples/full
+```
+
+## Example output
+
+```
+Compliance Audit Report
+Agent   compliance-analyst v1.0.0
+Date    2026-03-15
+────────────────────────────
+1. Risk Classification
+  Risk Tier   HIGH
+  Frameworks  finra, federal_reserve, sec
+
+2. Supervision (FINRA Rule 3110)
+  ✔ Designated supervisor assigned
+  ✔ Review cadence defined
+  ✔ Human-in-the-loop configured
+  ✔ Escalation triggers defined
+  ✔ Override capability enabled
+  ✔ Kill switch enabled
+  ✔ HITL is "always" or "conditional" for high/critical risk
+
+3. Recordkeeping (FINRA Rule 4511 / SEC 17a-4)
+  ✔ Audit logging enabled
+  ✔ Log format specified
+  ✔ Retention period defined
+  ✔ Prompt/response logging
+  ✔ Tool call logging
+  ✔ Immutable logs
+  ...
+
+────────────────────────────
+
+This audit report is for informational purposes only.
+Consult with legal and compliance teams for definitive assessments.
+```
+
+<Warning>
+The audit report is for informational purposes only. Consult with your legal and compliance teams for definitive regulatory assessments.
+</Warning>

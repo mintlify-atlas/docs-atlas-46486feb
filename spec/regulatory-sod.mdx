@@ -1,0 +1,203 @@
+---
+title: "Segregation of duties regulatory reference"
+description: "FINOS AI Governance, SOC 2 Type II, SR 11-7 Section IV, and FINRA 3110 — how each applies to multi-agent SOD and the corresponding gitagent configuration."
+---
+
+This page is the normative regulatory reference for the segregation of duties (SOD) framework in gitagent. For the full field reference, see [DUTIES.md spec](/spec/duties-md) and the [`compliance.segregation_of_duties` section](/spec/agent-yaml#compliance.segregation_of_duties) of the agent.yaml reference.
+
+## SOD framework references
+
+### FINOS AI Governance Framework
+
+| Field | Value |
+|-------|-------|
+| **Document** | FINOS AI Governance Framework |
+| **Subject** | Multi-Agent Isolation and Segmentation |
+| **gitagent impact** | `compliance.segregation_of_duties` |
+
+The FINOS AI Governance Framework provides guidance on isolation and segmentation in multi-agent financial systems. It recommends that agents in a multi-agent pipeline have clearly defined roles, restricted capabilities, and enforced boundaries that prevent any single agent from controlling an entire process end-to-end.
+
+gitagent satisfies this guidance through the `segregation_of_duties` configuration:
+
+```yaml
+compliance:
+  segregation_of_duties:
+    roles:
+      - id: maker
+        description: Creates proposals and initiates actions
+        permissions: [create, submit]
+      - id: checker
+        description: Reviews and approves maker outputs
+        permissions: [review, approve, reject]
+      - id: executor
+        description: Executes approved actions
+        permissions: [execute]
+      - id: auditor
+        description: Reviews completed actions for compliance
+        permissions: [audit, report]
+    conflicts:
+      - [maker, checker]     # maker cannot approve own work
+      - [maker, auditor]     # maker cannot audit own work
+      - [executor, checker]  # executor cannot approve what it executes
+      - [executor, auditor]  # executor cannot audit own execution
+    assignments:
+      loan-originator: [maker]
+      credit-reviewer: [checker]
+      loan-processor: [executor]
+      compliance-auditor: [auditor]
+    isolation:
+      state: full         # agents cannot access each other's state
+      credentials: separate  # each role has separate credential scope
+    enforcement: strict
+```
+
+The `isolation.state: full` and `isolation.credentials: separate` settings directly satisfy the FINOS isolation and segmentation requirements.
+
+### SOC 2 Type II
+
+| Field | Value |
+|-------|-------|
+| **Document** | SOC 2 Type II (Trust Services Criteria) |
+| **Subject** | Logical Access Controls |
+| **gitagent impact** | `segregation_of_duties.isolation` |
+
+SOC 2 Type II Trust Services Criteria CC6 (Logical and Physical Access Controls) requires that access to systems and data is restricted to authorized users, and that logical access controls enforce separation between roles.
+
+The `isolation` configuration directly addresses CC6:
+
+```yaml
+compliance:
+  segregation_of_duties:
+    isolation:
+      state: full        # CC6.1: access only to own state
+      credentials: separate  # CC6.3: separate credential scope per role
+```
+
+`state: full` ensures agents cannot access each other's state, satisfying the logical access control requirement. `credentials: separate` ensures each role uses its own credential scope, preventing privilege escalation across role boundaries.
+
+The `handoffs` configuration also supports SOC 2 CC9 (Risk Mitigation) by requiring explicit multi-role participation for high-risk actions:
+
+```yaml
+handoffs:
+  - action: credit_decision
+    required_roles: [maker, checker]
+    approval_required: true
+  - action: loan_disbursement
+    required_roles: [maker, checker, executor]
+    approval_required: true
+```
+
+### SR 11-7 Section IV — Independent review
+
+| Field | Value |
+|-------|-------|
+| **Document** | SR 11-7, Section IV (Independent Review Function) |
+| **Subject** | Independent Review (Maker/Checker Separation) |
+| **gitagent impact** | `segregation_of_duties.conflicts` (maker/checker separation) |
+
+SR 11-7 Section IV requires that model validation be performed by staff independent from those who developed and use the model. This is the regulatory basis for the maker/checker separation pattern.
+
+The `conflicts` array enforces this independence at the configuration level:
+
+```yaml
+conflicts:
+  - [maker, checker]     # implements SR 11-7 Section IV independence requirement
+  - [maker, auditor]     # prevents self-audit
+  - [executor, checker]  # prevents self-approval
+  - [executor, auditor]  # prevents self-audit of execution
+```
+
+With `enforcement: strict`, these conflict pairs are hard errors — the validator rejects any assignment that would allow a single agent to hold both roles in a conflict pair.
+
+Document the independent review function in the root `DUTIES.md`:
+
+```markdown
+## Conflict Matrix
+
+Implements SR 11-7 Section IV independence requirement:
+- `maker` ↔ `checker`: model developers cannot validate their own models
+- `maker` ↔ `auditor`: initiators cannot audit their own actions
+```
+
+### FINRA Rule 3110 — Supervisory duty separation
+
+| Field | Value |
+|-------|-------|
+| **Document** | FINRA Rule 3110 |
+| **Subject** | Supervisory Systems (duty separation) |
+| **gitagent impact** | `segregation_of_duties.handoffs` |
+
+FINRA Rule 3110 requires supervisory systems that ensure no registered person can approve their own conduct. For multi-agent systems, the `handoffs` configuration enforces this by requiring explicit multi-role participation for critical actions.
+
+```yaml
+handoffs:
+  - action: customer_communication
+    required_roles: [maker, checker]
+    approval_required: true  # checker must explicitly approve before delivery
+  - action: trade_execution
+    required_roles: [maker, checker, executor]
+    approval_required: true
+```
+
+The `approval_required: true` flag ensures that the checker must explicitly approve (not just observe) before the action proceeds — directly implementing the Rule 3110 principal review requirement at the multi-agent level.
+
+## Full SOD regulatory mapping
+
+| Document | Issued by | Subject | `agent.yaml` field |
+|----------|-----------|---------|-------------------|
+| FINOS AI Governance Framework | FINOS | Multi-Agent Isolation & Segmentation | `compliance.segregation_of_duties` |
+| SOC 2 Type II | AICPA | Logical Access Controls | `segregation_of_duties.isolation` |
+| SR 11-7 Section IV | Fed / OCC | Independent Review | `segregation_of_duties.conflicts` |
+| FINRA Rule 3110 | FINRA | Supervisory Systems | `segregation_of_duties.handoffs` |
+
+## Satisfying all four references together
+
+A complete SOD configuration that satisfies all four references:
+
+```yaml
+compliance:
+  segregation_of_duties:
+    # FINOS AI Governance: define roles with restricted permissions
+    roles:
+      - id: maker
+        description: Creates proposals and initiates actions
+        permissions: [create, submit]
+      - id: checker
+        description: Reviews and approves maker outputs
+        permissions: [review, approve, reject]
+      - id: executor
+        description: Executes approved actions
+        permissions: [execute]
+      - id: auditor
+        description: Reviews completed actions for compliance
+        permissions: [audit, report]
+
+    # SR 11-7 Section IV: maker/checker independence enforced
+    conflicts:
+      - [maker, checker]
+      - [maker, auditor]
+      - [executor, checker]
+      - [executor, auditor]
+
+    assignments:
+      loan-originator: [maker]
+      credit-reviewer: [checker]
+      loan-processor: [executor]
+      compliance-auditor: [auditor]
+
+    # SOC 2 Type II CC6: logical access control
+    isolation:
+      state: full
+      credentials: separate
+
+    # FINRA 3110: multi-role approval for critical actions
+    handoffs:
+      - action: credit_decision
+        required_roles: [maker, checker]
+        approval_required: true
+      - action: loan_disbursement
+        required_roles: [maker, checker, executor]
+        approval_required: true
+
+    enforcement: strict
+```

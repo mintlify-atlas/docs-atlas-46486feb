@@ -1,0 +1,354 @@
+---
+title: "Standard example"
+description: "A code review agent that demonstrates skills, tools, knowledge, and rules working together."
+---
+
+The standard example is a production-quality code review agent. It demonstrates the full set of optional components that most agents need: a skill with structured instructions, two MCP-compatible tool definitions, a knowledge document with an index, and a `RULES.md` with hard constraints.
+
+Use this example as a reference when building your first real agent.
+
+## Directory structure
+
+```text
+examples/standard/
+├── agent.yaml
+├── SOUL.md
+├── RULES.md
+├── PROMPT.md
+├── AGENTS.md
+├── skills/
+│   └── code-review/
+│       └── SKILL.md
+├── tools/
+│   ├── lint-check.yaml
+│   └── complexity-analysis.yaml
+└── knowledge/
+    ├── index.yaml
+    └── owasp-top-10.md
+```
+
+## File contents
+
+### agent.yaml
+
+The manifest declares the model, skill, tools, and runtime configuration. It lists `code-review` under `skills:` and both tools under `tools:`.
+
+```yaml agent.yaml
+spec_version: "0.1.0"
+name: code-review-agent
+version: 1.0.0
+description: Automated code review agent with best-practice enforcement
+author: gitagent-examples
+license: MIT
+model:
+  preferred: claude-sonnet-4-5-20250929
+  fallback:
+    - claude-haiku-4-5-20251001
+  constraints:
+    temperature: 0.2
+    max_tokens: 4096
+skills:
+  - code-review
+tools:
+  - lint-check
+  - complexity-analysis
+runtime:
+  max_turns: 20
+  timeout: 120
+tags:
+  - code-review
+  - developer-tools
+```
+
+### SOUL.md
+
+The identity file establishes the agent as a code review specialist. It defines communication style, values, domain expertise, and how it categorizes findings.
+
+```markdown SOUL.md
+# Soul
+
+## Core Identity
+I am a code review specialist. I analyze code changes for correctness, security
+vulnerabilities, performance issues, and adherence to best practices.
+
+## Communication Style
+Direct and constructive. I provide specific, actionable feedback with code examples.
+I distinguish between blocking issues and suggestions.
+
+## Values & Principles
+- Security first — always flag potential vulnerabilities
+- Clarity over cleverness — prefer readable code
+- Constructive feedback — explain *why*, not just *what*
+
+## Domain Expertise
+- Software engineering best practices
+- OWASP Top 10 security vulnerabilities
+- Performance optimization patterns
+- Code maintainability and readability
+
+## Collaboration Style
+I categorize findings by severity: CRITICAL, WARNING, SUGGESTION. I always
+acknowledge what the code does well before listing issues.
+```
+
+### RULES.md
+
+Hard constraints that shape every interaction. The `Must Always` and `Must Never` sections are injected directly into the system prompt.
+
+```markdown RULES.md
+# Rules
+
+## Must Always
+- Flag SQL injection, XSS, and command injection vulnerabilities as CRITICAL
+- Include line numbers when referencing code
+- Suggest fixes for every issue identified
+- Acknowledge positive patterns in the code
+
+## Must Never
+- Approve code with known security vulnerabilities
+- Rewrite entire files — only suggest targeted changes
+- Make assumptions about business logic without asking
+- Ignore error handling gaps
+
+## Output Constraints
+- Use markdown formatting with code blocks
+- Categorize all findings: CRITICAL, WARNING, SUGGESTION
+- Keep individual comments under 200 words
+- Provide a summary at the end of each review
+
+## Interaction Boundaries
+- Only review code that is explicitly provided
+- Do not execute or run any code
+- Do not access external services or APIs
+```
+
+### skills/code-review/SKILL.md
+
+Skills are capability modules. The frontmatter declares the skill name, a description, which tools it is allowed to call, and metadata. The instructions section is injected into the system prompt when the skill is active.
+
+```markdown skills/code-review/SKILL.md
+---
+name: code-review
+description: Review code changes for quality, security, and best practices
+license: MIT
+allowed-tools: lint-check complexity-analysis
+metadata:
+  author: gitagent-examples
+  version: "1.0.0"
+  category: developer-tools
+---
+
+# Code Review
+
+## Instructions
+When reviewing code:
+1. Read the full diff or file provided
+2. Check for security vulnerabilities (OWASP Top 10)
+3. Evaluate error handling completeness
+4. Assess code complexity and readability
+5. Verify naming conventions and code style
+6. Look for performance issues
+7. Check for proper input validation
+
+## Output Format
+\`\`\`
+## Review Summary
+[1-2 sentence overview]
+
+## Findings
+
+### CRITICAL
+- [Finding with line reference and fix]
+
+### WARNING
+- [Finding with line reference and fix]
+
+### SUGGESTION
+- [Finding with line reference and fix]
+
+## What's Done Well
+- [Positive observations]
+\`\`\`
+```
+
+### tools/lint-check.yaml
+
+Tool definitions follow the MCP-compatible schema. `input_schema` and `output_schema` use JSON Schema. The `annotations` block tells the runtime whether the tool requires confirmation, modifies state, and its cost.
+
+```yaml tools/lint-check.yaml
+name: lint-check
+description: Run linting checks on source code
+version: 1.0.0
+input_schema:
+  type: object
+  properties:
+    code:
+      type: string
+      description: Source code to lint
+    language:
+      type: string
+      enum: [javascript, typescript, python, go, rust]
+      description: Programming language
+  required: [code, language]
+output_schema:
+  type: object
+  properties:
+    issues:
+      type: array
+      items:
+        type: object
+        properties:
+          line: { type: integer }
+          column: { type: integer }
+          severity: { type: string, enum: [error, warning, info] }
+          message: { type: string }
+          rule: { type: string }
+implementation:
+  type: script
+  path: lint-check.sh
+  runtime: bash
+  timeout: 30
+annotations:
+  requires_confirmation: false
+  read_only: true
+  cost: none
+```
+
+### tools/complexity-analysis.yaml
+
+```yaml tools/complexity-analysis.yaml
+name: complexity-analysis
+description: Analyze cyclomatic complexity of code
+version: 1.0.0
+input_schema:
+  type: object
+  properties:
+    code:
+      type: string
+      description: Source code to analyze
+    threshold:
+      type: integer
+      description: Complexity threshold for warnings
+      default: 10
+  required: [code]
+output_schema:
+  type: object
+  properties:
+    overall_complexity:
+      type: integer
+    functions:
+      type: array
+      items:
+        type: object
+        properties:
+          name: { type: string }
+          complexity: { type: integer }
+          exceeds_threshold: { type: boolean }
+implementation:
+  type: script
+  path: complexity-analysis.sh
+  runtime: bash
+  timeout: 30
+annotations:
+  requires_confirmation: false
+  read_only: true
+  cost: none
+```
+
+### knowledge/index.yaml
+
+The knowledge index lists documents and controls which ones are loaded into the system prompt automatically. Documents with `always_load: true` are included in every export.
+
+```yaml knowledge/index.yaml
+documents:
+  - path: owasp-top-10.md
+    tags: [security, owasp, reference]
+    priority: high
+    always_load: true
+```
+
+## What each component contributes
+
+<CardGroup cols={2}>
+  <Card title="agent.yaml" icon="file">
+    Declares the model preference (claude-sonnet-4-5), registers the skill and tools by name, and sets runtime limits (20 turns, 120s timeout).
+  </Card>
+  <Card title="SOUL.md" icon="heart">
+    Establishes the code review specialist identity, communication style, and severity classification system (CRITICAL, WARNING, SUGGESTION).
+  </Card>
+  <Card title="RULES.md" icon="shield">
+    Hard constraints injected after SOUL.md. Prevents approving vulnerable code, forces line-number citations, and limits scope to provided code only.
+  </Card>
+  <Card title="skills/code-review/SKILL.md" icon="wrench">
+    A reusable capability module with a 7-step review checklist, output format template, and an allowlist of tools the skill may call.
+  </Card>
+  <Card title="tools/*.yaml" icon="bolt">
+    MCP-compatible tool schemas the agent can invoke during a review — `lint-check` for static analysis and `complexity-analysis` for cyclomatic complexity.
+  </Card>
+  <Card title="knowledge/index.yaml + owasp-top-10.md" icon="book">
+    The OWASP Top 10 reference is loaded into every system prompt via `always_load: true`, so the agent can cite specific vulnerability classes.
+  </Card>
+</CardGroup>
+
+## Running the example
+
+<Steps>
+  <Step title="Validate">
+    ```bash
+    gitagent validate -d ./examples/standard
+    ```
+
+    The validator checks `agent.yaml` schema, that `code-review`, `lint-check`, and `complexity-analysis` exist on disk, SOUL.md content, and the SKILL.md frontmatter.
+  </Step>
+
+  <Step title="Inspect">
+    ```bash
+    gitagent info -d ./examples/standard
+    ```
+
+    The output shows the model preference, registered skill, both tools, and the SOUL.md preview.
+  </Step>
+
+  <Step title="Run with Claude">
+    Start an interactive code review session:
+
+    ```bash
+    gitagent run -d ./examples/standard
+    ```
+
+    Or send a one-shot prompt:
+
+    ```bash
+    gitagent run -d ./examples/standard -p "Review this Python function for security issues"
+    ```
+  </Step>
+
+  <Step title="Export to other formats">
+    <CodeGroup>
+      ```bash System prompt
+      gitagent export --format system-prompt -d ./examples/standard
+      ```
+
+      ```bash GitHub Models payload
+      gitagent export --format github -d ./examples/standard
+      ```
+
+      ```bash CrewAI config
+      gitagent export --format crewai -d ./examples/standard
+      ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## What to add next
+
+The standard example covers the most common agent components. From here, you can add:
+
+- **Hooks** — Lifecycle scripts that run on session start, before/after tool calls, and on errors. See `hooks/hooks.yaml` in the [full example](/examples/full).
+- **Sub-agents** — Delegate specific tasks to specialized agents defined in `agents/`.
+- **Compliance** — Add a `compliance:` block to `agent.yaml` and the required artifacts in `compliance/` for regulated environments.
+- **Memory** — Add `memory/MEMORY.md` and `memory/memory.yaml` for persistent cross-session context.
+
+<Card title="Full example" icon="building" href="/examples/full">
+  A production compliance agent with every directory — hooks, workflows, sub-agents, and full FINRA/SEC/Fed regulatory configuration.
+</Card>

@@ -1,0 +1,235 @@
+---
+title: "Branch-based deployment"
+description: "Promote agent changes through dev, staging, and main branches — just like shipping software. Gate each promotion with validation and automated tests."
+---
+
+The branch-based deployment pattern brings standard software release practices to agent management. You maintain three long-lived branches — `dev`, `staging`, and `main` — and promote changes through them with validation gates at each step.
+
+This gives you:
+
+- A clear, auditable promotion path for every agent change
+- Environment-specific configuration (different models, logging levels, compliance modes per environment)
+- The ability to test changes in staging before they affect production users
+- Instant rollback by reverting a merge or redeploying a previous tag
+
+## Branch structure
+
+```
+main      ← production; always matches the deployed agent
+  ↑
+staging   ← pre-production; validated, reviewed, ready to ship
+  ↑
+dev       ← active development; validated but not yet reviewed
+```
+
+All work starts on `dev` (or a feature branch off `dev`). Once validated, changes promote to `staging` for final review. After approval, `staging` merges to `main` and the agent is deployed.
+
+## Environment-specific configuration
+
+Store environment-specific overrides in `config/<env>.yaml`. These files are deep-merged on top of `config/default.yaml` at runtime:
+
+```
+config/
+├── default.yaml      # shared defaults
+├── development.yaml  # dev overrides
+├── staging.yaml      # staging overrides
+└── production.yaml   # production overrides
+```
+
+### config/default.yaml
+
+```yaml
+log_level: info
+compliance_mode: true
+model_override: null
+```
+
+### config/development.yaml
+
+```yaml
+log_level: debug
+compliance_mode: false   # relax compliance checks during development
+model_override: claude-haiku-4-5-20251001  # use faster/cheaper model in dev
+```
+
+### config/staging.yaml
+
+```yaml
+log_level: info
+compliance_mode: true
+audit_logging: true
+# same model as production, full compliance, more verbose logging
+```
+
+### config/production.yaml
+
+```yaml
+log_level: warn
+compliance_mode: true
+audit_logging: true
+```
+
+## The promotion workflow
+
+<Steps>
+  <Step title="Develop on dev">
+    Create a feature branch off `dev`, make your changes, validate, and merge to `dev`:
+
+    ```bash
+    git checkout dev
+    git checkout -b feature/add-fraud-detection
+
+    # Make changes to skills, rules, agent.yaml, etc.
+    gitagent validate
+    gitagent validate --compliance
+
+    git add .
+    git commit -m "Add fraud-detection skill"
+
+    git checkout dev
+    git merge feature/add-fraud-detection
+    git push origin dev
+    ```
+  </Step>
+
+  <Step title="Promote to staging">
+    When `dev` is stable and ready for pre-production review, merge to `staging`:
+
+    ```bash
+    git checkout staging
+    git merge dev
+    git push origin staging
+    ```
+
+    Your CI pipeline runs `gitagent validate --compliance` on `staging`. A designated reviewer inspects the diff and approves.
+  </Step>
+
+  <Step title="Deploy to production">
+    After staging approval, merge to `main` and tag the release:
+
+    ```bash
+    git checkout main
+    git merge staging
+    git tag -a v1.4.0 -m "Add fraud-detection skill — reviewed 2026-03-15"
+    git push origin main --tags
+    ```
+
+    Your deployment pipeline picks up the new tag and deploys the updated agent.
+  </Step>
+</Steps>
+
+## GitHub Actions workflow for branch promotion
+
+Use GitHub Actions to validate on every push and gate promotion merges:
+
+```yaml
+name: Agent promotion
+
+on:
+  push:
+    branches: [dev, staging, main]
+  pull_request:
+    branches: [staging, main]
+
+jobs:
+  validate:
+    name: Validate agent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install gitagent
+        run: npm install -g gitagent
+
+      - name: Validate agent schema
+        run: gitagent validate -d .
+
+      - name: Validate compliance (staging and main only)
+        if: github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main'
+        run: gitagent validate -d . --compliance
+
+      - name: Generate audit report
+        if: github.ref == 'refs/heads/main'
+        run: gitagent audit -d .
+
+      - name: Export system prompt artifact
+        if: github.ref == 'refs/heads/main'
+        run: gitagent export -f system-prompt -d . -o system-prompt.md
+
+      - name: Upload system prompt
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-prompt
+          path: system-prompt.md
+```
+
+## Tags for pinned production versions
+
+Tag every production deployment so you can always identify exactly what is running:
+
+```bash
+# Tag after merging to main
+git tag -a v1.4.0 -m "Production release 2026-03-15 — fraud-detection skill"
+git push origin v1.4.0
+
+# List all production tags
+git tag --list 'v*'
+
+# Run the agent at a specific tagged production version
+gitagent run -r https://github.com/org/my-agent -b v1.4.0 -a claude
+```
+
+Use [Semantic Versioning](https://semver.org): increment major for breaking changes, minor for new capabilities, patch for fixes.
+
+## Rollback procedure
+
+If a production deployment causes problems, you have two options:
+
+### Option 1: Revert the merge commit (recommended)
+
+```bash
+git checkout main
+
+# Find the merge commit hash
+git log --oneline --merges -5
+# abc1234 Merge staging into main
+
+# Revert the merge — creates a new commit, preserves history
+git revert -m 1 abc1234
+git push origin main
+
+# Tag the rollback
+git tag -a v1.4.1 -m "Rollback v1.4.0 — fraud-detection causing false positives"
+git push origin v1.4.1
+```
+
+### Option 2: Deploy a previous tag
+
+If your deployment system reads from a git tag, simply update the tag pointer:
+
+```bash
+# Force-move the 'production' tag to the previous stable version
+git tag -f production v1.3.2
+git push origin production --force
+```
+
+<Warning>
+Force-pushing tags rewrites remote history. Only use this approach if your deployment system is designed for it and your team is aware. `git revert` is generally safer for teams following a PR-based workflow.
+</Warning>
+
+## Branch protection rules
+
+Configure branch protection on `staging` and `main` to enforce the promotion workflow:
+
+- Require pull request reviews before merging
+- Require status checks (`validate` job) to pass before merging
+- Restrict who can push directly to `main`
+- Require linear history (optional, but simplifies the git log)
+
+With these rules in place, no change can reach production without passing `gitagent validate --compliance` and receiving at least one approval.

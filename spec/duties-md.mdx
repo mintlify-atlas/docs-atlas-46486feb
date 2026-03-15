@@ -1,0 +1,138 @@
+---
+title: "DUTIES.md specification"
+description: "How DUTIES.md works at the root level (system-wide SOD policy) and per-agent level (role declaration), with examples of both."
+---
+
+`DUTIES.md` declares duties, role boundaries, and segregation of duties (SOD) policy. It exists at two levels with different purposes:
+
+<CardGroup cols={2}>
+  <Card title="Root DUTIES.md" icon="shield">
+    System-wide SOD policy. Defines all roles, the conflict matrix, handoff workflows, isolation level, and enforcement mode. This is the human-readable counterpart to the `compliance.segregation_of_duties` section in `agent.yaml`.
+  </Card>
+  <Card title="Per-agent DUTIES.md" icon="user-check">
+    Individual agent role declaration. Lives at `agents/&lt;name&gt;/DUTIES.md`. Describes this agent's specific role, permissions, must/must-not rules, and where it sits in handoff chains.
+  </Card>
+</CardGroup>
+
+## Root DUTIES.md
+
+The root `DUTIES.md` is the SOD equivalent of `RULES.md` — it defines the policy that all agents in the system must follow.
+
+### Recommended sections
+
+| Section | Purpose |
+|---------|--------|
+| **Roles** | Table of all roles, assigned agents, and permissions |
+| **Conflict matrix** | Which role pairs cannot be held by the same agent |
+| **Handoff workflows** | Step-by-step handoff chains for critical actions |
+| **Isolation policy** | State and credential isolation levels |
+| **Enforcement** | Strict vs advisory mode |
+
+### Root DUTIES.md example
+
+```markdown
+# Duties
+
+## Roles
+
+| Role | Agent | Permissions |
+|------|-------|-------------|
+| maker | loan-originator | create, submit |
+| checker | credit-reviewer | review, approve, reject |
+| executor | loan-processor | execute |
+| auditor | compliance-auditor | audit, report |
+
+## Conflict Matrix
+
+The following role pairs cannot be held by the same agent:
+
+- `maker` ↔ `checker` — maker cannot approve own work
+- `maker` ↔ `auditor` — maker cannot audit own work
+- `executor` ↔ `checker` — executor cannot approve what it executes
+- `executor` ↔ `auditor` — executor cannot audit own execution
+
+## Handoff Workflows
+
+### Credit decision
+1. `loan-originator` (maker) creates and submits proposal
+2. `credit-reviewer` (checker) reviews and approves or rejects
+3. Approval required before `loan-processor` executes
+
+### Loan disbursement
+1. `loan-originator` (maker) creates disbursement request
+2. `credit-reviewer` (checker) approves disbursement
+3. `loan-processor` (executor) executes the disbursement
+
+## Isolation Policy
+
+- State isolation: `full` — agents cannot access each other's state
+- Credential scope: `separate` — each role has its own credential scope
+
+## Enforcement
+
+Mode: `strict` — SOD violations are hard errors that block execution.
+```
+
+## Per-agent DUTIES.md
+
+Per-agent `DUTIES.md` lives at `agents/<name>/DUTIES.md`. It answers four questions for that specific agent: what is my role, what can I do, what must I not do, and who do I hand off to.
+
+### Recommended sections
+
+| Section | Purpose |
+|---------|--------|
+| **Role** | This agent's assigned role in the SOD policy |
+| **Permissions** | What actions this agent is authorized to take |
+| **Boundaries** | Must/must-not rules specific to this role |
+| **Handoff participation** | Where this agent sits in handoff chains |
+| **Isolation** | This agent's isolation constraints |
+
+### Per-agent DUTIES.md example
+
+```markdown
+# Duties — loan-originator
+
+## Role
+
+This agent holds the `maker` role. It initiates credit proposals and submits
+them for review. It does not have approval, execution, or audit permissions.
+
+## Permissions
+
+- `create` — create new loan proposals
+- `submit` — submit proposals to the checker queue
+
+## Boundaries
+
+### Must Always
+- Attach full documentation to every proposal before submission
+- Record the reason for each proposal in structured format
+- Halt immediately if an error is detected during proposal creation
+
+### Must Never
+- Approve its own proposals
+- Access the credit-reviewer's state or decision queue
+- Execute loan disbursements
+- Audit completed transactions
+
+## Handoff Participation
+
+### Credit decision
+- **My step**: Create and submit the loan proposal (step 1 of 2)
+- **Hands off to**: `credit-reviewer` for approval
+
+### Loan disbursement
+- **My step**: Create the disbursement request (step 1 of 3)
+- **Hands off to**: `credit-reviewer` for approval, then `loan-processor` for execution
+
+## Isolation
+
+- State: `full` — no access to other agents' state
+- Credentials: `separate` — this agent uses maker-scoped credentials only
+```
+
+## Relationship to agent.yaml
+
+The machine-readable SOD configuration lives in `compliance.segregation_of_duties` in `agent.yaml`. `DUTIES.md` provides the human-readable policy document. Both should be kept in sync — the YAML is validated by `gitagent validate`, while `DUTIES.md` serves as the auditable policy record.
+
+See the [agent.yaml compliance section](/spec/agent-yaml#compliance.segregation_of_duties) for the full field reference, and [SOD regulatory reference](/spec/regulatory-sod) for the regulatory frameworks that this structure satisfies.

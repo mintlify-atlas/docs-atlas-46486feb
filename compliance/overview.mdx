@@ -1,0 +1,188 @@
+---
+title: "Compliance overview"
+description: "How GitAgent embeds regulatory compliance directly into the agent manifest — risk tiers, supported frameworks, validation, and audit reporting."
+---
+
+GitAgent treats compliance as a first-class concern, not an afterthought. Regulatory requirements — supervision controls, audit logging, model risk management, segregation of duties — live directly in `agent.yaml` alongside the agent's identity and capabilities. When you version your agent, you version its compliance configuration too.
+
+## Why compliance belongs in the manifest
+
+Most agent frameworks treat compliance as something you bolt on after deployment: separate audit dashboards, external logging pipelines, manual review processes. GitAgent takes the opposite approach.
+
+Because `agent.yaml` is version-controlled, putting compliance configuration there gives you:
+
+- **Auditability by default** — every change to a compliance setting is a git commit with an author, timestamp, and diff
+- **Validation before deployment** — `gitagent validate --compliance` catches violations in CI before they reach production
+- **Framework portability** — compliance constraints travel with the agent when you export to Claude Code, OpenAI, CrewAI, or any other runtime
+- **Human-readable policy** — a compliance officer can read `agent.yaml` and understand the agent's controls without reading source code
+
+## What "compliance-ready" means
+
+An agent is compliance-ready when its `agent.yaml` contains a `compliance` section that:
+
+1. Declares a `risk_tier` that reflects the agent's regulatory exposure
+2. Lists the applicable `frameworks` (e.g., `finra`, `federal_reserve`, `sec`, `cfpb`)
+3. Configures the sections required by those frameworks (`supervision`, `recordkeeping`, `model_risk`, `data_governance`, `communications`, `vendor_management`, `segregation_of_duties`)
+4. Passes `gitagent validate --compliance` with no errors
+
+Compliance-ready does not mean compliant. The manifest captures your _intent_ and _configuration_. Legal and compliance teams must evaluate whether the configuration meets your specific regulatory obligations.
+
+## Supported frameworks
+
+GitAgent ships with built-in validation for four regulatory frameworks. The `frameworks` array in `agent.yaml` is extensible — any string value is accepted — but these four receive dedicated validation checks:
+
+| Framework | Key rules | `agent.yaml` section |
+|-----------|-----------|---------------------|
+| `finra` | Rule 3110 (Supervision), Rule 4511 (Recordkeeping), Rule 2210 (Communications), Reg Notice 24-09 | `supervision`, `recordkeeping`, `communications` |
+| `federal_reserve` | SR 11-7 (Model Risk Management), SR 23-4 (Third-Party Risk) | `model_risk`, `vendor_management` |
+| `sec` | Reg S-P (Privacy), 17a-4 (Records Retention) | `recordkeeping`, `data_governance` |
+| `cfpb` | Circular 2022-03 (Adverse Action, Fair Lending) | `data_governance` |
+
+You can also declare non-US frameworks for documentation purposes:
+
+```yaml
+compliance:
+  frameworks:
+    - finra
+    - federal_reserve
+    - eu_ai_act      # accepted, no dedicated validation checks
+    - gdpr           # accepted, no dedicated validation checks
+```
+
+## The compliance section of agent.yaml
+
+The `compliance` section is the central configuration point. Here is a representative high-tier example:
+
+```yaml
+compliance:
+  risk_tier: high
+  frameworks:
+    - finra
+    - federal_reserve
+    - sec
+    - cfpb
+
+  supervision:
+    designated_supervisor: chief-compliance-officer
+    review_cadence: monthly
+    human_in_the_loop: always
+    escalation_triggers:
+      - confidence_below: 0.85
+      - action_type: regulatory_filing
+      - error_detected: true
+    override_capability: true
+    kill_switch: true
+
+  recordkeeping:
+    audit_logging: true
+    log_format: structured_json
+    retention_period: 7y
+    log_contents:
+      - prompts_and_responses
+      - tool_calls
+      - decision_pathways
+      - model_version
+      - timestamps
+    immutable: true
+
+  model_risk:
+    inventory_id: MRM-2026-0047
+    validation_cadence: quarterly
+    validation_type: full
+    ongoing_monitoring: true
+    outcomes_analysis: true
+    drift_detection: true
+
+  data_governance:
+    pii_handling: redact
+    data_classification: restricted
+    consent_required: true
+    cross_border: false
+    bias_testing: true
+    lda_search: true
+
+  communications:
+    type: institutional
+    pre_review_required: true
+    fair_balanced: true
+    no_misleading: true
+    disclosures_required: true
+
+  vendor_management:
+    due_diligence_complete: true
+    soc_report_required: true
+    vendor_ai_notification: true
+    subcontractor_assessment: true
+
+  segregation_of_duties:
+    roles:
+      - id: analyst
+        permissions: [create, submit]
+      - id: reviewer
+        permissions: [review, approve, reject]
+    conflicts:
+      - [analyst, reviewer]
+    assignments:
+      compliance-analyst: [analyst]
+      fact-checker: [reviewer]
+    enforcement: strict
+```
+
+## The compliance/ directory
+
+For `high` and `critical` risk agents, GitAgent expects a `compliance/` directory containing regulatory artifacts:
+
+```
+compliance/
+├── risk-assessment.md        # Risk tier justification and sign-off
+├── regulatory-map.yaml       # Capability-to-rule control mappings
+└── validation-schedule.yaml  # Validation cadence schedule
+```
+
+These files are not parsed by the CLI — they are documentation artifacts for auditors and compliance teams. `gitagent validate --compliance` will warn if they are missing for high/critical agents.
+
+## Validation vs. audit
+
+GitAgent provides two compliance commands with different purposes:
+
+| Command | When to use | Output |
+|---------|-------------|--------|
+| `gitagent validate --compliance` | CI/CD, before merging changes | Pass/fail with specific errors and rule citations |
+| `gitagent audit` | Compliance reviews, pre-deployment, periodic assessments | Section-by-section checklist report with pass/warn indicators |
+
+```bash
+# Check compliance configuration is valid (use in CI)
+gitagent validate --compliance
+
+# Generate a full compliance checklist report
+gitagent audit
+
+# Run both against a specific agent directory
+gitagent validate -d ./my-agent --compliance
+gitagent audit -d ./my-agent
+```
+
+`gitagent validate --compliance` is a pass/fail gate — it exits with code 1 on errors. `gitagent audit` is a reporting tool — it always completes and produces a structured report you can share with compliance teams.
+
+## Explore each topic
+
+<CardGroup cols={2}>
+  <Card title="Risk tiers" icon="signal" href="/compliance/risk-tiers">
+    The four tiers — low, standard, high, critical — and what each requires
+  </Card>
+  <Card title="FINRA" icon="building-columns" href="/compliance/finra">
+    Rules 3110, 4511, 2210, and Reg Notice 24-09 — supervision, recordkeeping, communications
+  </Card>
+  <Card title="Federal Reserve" icon="landmark" href="/compliance/federal-reserve">
+    SR 11-7 model risk management and SR 23-4 third-party risk
+  </Card>
+  <Card title="SEC and CFPB" icon="scale-balanced" href="/compliance/sec-cfpb">
+    Reg S-P privacy, 17a-4 retention, and CFPB Circular 2022-03 fair lending
+  </Card>
+  <Card title="Segregation of duties" icon="users-between-lines" href="/compliance/segregation-of-duties">
+    Roles, conflict matrix, assignments, isolation, and handoff workflows
+  </Card>
+  <Card title="Audit report" icon="clipboard-list" href="/compliance/audit-report">
+    What `gitagent audit` generates — all nine report sections explained
+  </Card>
+</CardGroup>

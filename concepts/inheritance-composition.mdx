@@ -1,0 +1,199 @@
+---
+title: "Inheritance and composition"
+description: "Extend parent agents with the extends field, compose agent systems with dependencies, and understand how each file type is resolved."
+---
+
+GitAgent gives you two mechanisms for building on top of existing agents: **inheritance** (via `extends`) and **composition** (via `dependencies`). Both are declared in `agent.yaml` and resolved by the CLI.
+
+## Extending a parent agent
+
+Use the `extends` field to inherit from a parent agent:
+
+```yaml
+extends: https://github.com/org/base-agent.git
+```
+
+The value can be a git URL or a local path. When you run the agent, the parent's files are loaded first, then the child's files are applied on top according to the resolution rules below.
+
+<Note>
+GitAgent supports single inheritance only. A child agent can have one `extends` parent, not multiple.
+</Note>
+
+### Resolution rules
+
+Different file types are merged in different ways:
+
+| File / Directory | Resolution behavior |
+|---|---|
+| `agent.yaml` | Deep merge. Child fields override parent fields at every nesting level. |
+| `SOUL.md` | Child replaces parent entirely. The child's identity is completely independent. |
+| `RULES.md` | Union. Child rules are appended to parent rules. Both sets apply. |
+| `skills/` | Union. Child skills and parent skills are both available. On name collision, the child shadows the parent. |
+| `tools/` | Union. Same shadowing rule as skills. |
+| `memory/` | Isolated. Not inherited. Each agent maintains its own memory. |
+| `compliance/` | Child inherits parent compliance config, then can override specific fields. |
+
+### Example
+
+```yaml
+# child agent.yaml
+spec_version: "0.1.0"
+name: specialized-analyst
+version: 1.0.0
+description: Specialized compliance analyst for mortgage lending
+
+extends: https://github.com/org/base-compliance-agent.git
+
+# These fields override the parent's values
+model:
+  preferred: claude-opus-4-6
+  constraints:
+    temperature: 0.1
+
+# These skills are added to the parent's skill set
+skills:
+  - mortgage-analysis
+  - hmda-compliance
+
+# Compliance fields here deep-merge with the parent's compliance section
+compliance:
+  frameworks:
+    - finra
+    - federal_reserve
+    - cfpb
+```
+
+## Composing with dependencies
+
+Use `dependencies` to mount external agents as sub-agents in your system:
+
+```yaml
+dependencies:
+  - name: fact-checker
+    source: https://github.com/org/fact-checker-agent.git
+    version: ^1.0.0
+    mount: agents/fact-checker
+    vendor_management:
+      due_diligence_date: "2026-01-15"
+      soc_report: true
+      risk_assessment: low
+```
+
+Run `gitagent install` to clone and install all declared dependencies:
+
+```bash
+gitagent install
+gitagent install -d ./my-agent
+```
+
+For each dependency entry:
+- Local paths are copied to the `mount` destination
+- Git URLs are shallow-cloned at the specified version or branch
+- If no `mount` is specified, the dependency is installed to `.gitagent/deps/<name>/`
+- The CLI validates that the installed dependency contains a valid `agent.yaml`
+
+### Dependency fields
+
+<ParamField path="dependencies[].name" type="string" required>
+  Identifier for this dependency. Used as the key in your `agents` configuration.
+</ParamField>
+
+<ParamField path="dependencies[].source" type="string" required>
+  Git URL or local path to the dependency agent.
+</ParamField>
+
+<ParamField path="dependencies[].version" type="string">
+  Semantic version constraint. Supports npm-style ranges: `^1.0.0`, `~1.0.0`, `>=1.0.0 <2.0.0`, or an exact version like `1.2.3`.
+</ParamField>
+
+<ParamField path="dependencies[].mount" type="string">
+  Directory where the dependency is installed, relative to the agent root. If omitted, defaults to `.gitagent/deps/<name>/`.
+</ParamField>
+
+<ParamField path="dependencies[].vendor_management" type="object">
+  Third-party risk metadata required for SR 23-4 (Federal Reserve) compliance. Fields: `due_diligence_date`, `soc_report` (boolean), `risk_assessment` (`low`, `medium`, `high`).
+</ParamField>
+
+## Git caching
+
+When installing dependencies from git URLs, GitAgent caches repositories in `~/.gitagent/cache/`. The cache key is derived from SHA-256 of `{url}#{branch}` (first 16 characters).
+
+| Flag | Behavior |
+|---|---|
+| *(default)* | Clone once, reuse from cache on subsequent installs |
+| `--refresh` | Pull latest into the existing cache |
+| `--no-cache` | Clone to a temporary directory, delete on exit |
+
+## Full example
+
+The following shows a compliance agent that extends a base agent and composes with two external dependency agents:
+
+```yaml
+spec_version: "0.1.0"
+name: compliance-analyst
+version: 1.0.0
+description: Financial compliance analysis agent
+author: Acme Financial
+license: proprietary
+
+# Inherit configuration from the base compliance agent
+extends: https://github.com/org/base-compliance-agent.git
+
+# Compose with external agents
+dependencies:
+  - name: fact-checker
+    source: https://github.com/org/fact-checker-agent.git
+    version: ^1.0.0
+    mount: agents/fact-checker
+    vendor_management:
+      due_diligence_date: "2026-01-15"
+      soc_report: true
+      risk_assessment: low
+  - name: report-generator
+    source: https://github.com/org/report-generator-agent.git
+    version: ^2.0.0
+    mount: agents/report-generator
+    vendor_management:
+      due_diligence_date: "2026-02-01"
+      soc_report: true
+      risk_assessment: low
+
+# Register the installed dependencies as usable sub-agents
+agents:
+  fact-checker:
+    description: Verifies factual claims against authoritative sources
+    delegation:
+      mode: auto
+      triggers:
+        - factual_claim_detected
+  report-generator:
+    description: Generates formatted compliance reports
+    delegation:
+      mode: explicit
+
+skills:
+  - regulatory-analysis
+  - document-review
+
+tools:
+  - search-regulations
+
+compliance:
+  risk_tier: high
+  frameworks:
+    - finra
+    - federal_reserve
+    - sec
+```
+
+After declaring these dependencies, install them:
+
+```bash
+gitagent install
+```
+
+Then validate the full resolved configuration:
+
+```bash
+gitagent validate --compliance
+```

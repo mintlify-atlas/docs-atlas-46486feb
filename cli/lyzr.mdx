@@ -1,0 +1,214 @@
+---
+title: gitagent lyzr
+description: Create, update, inspect, and run agents on Lyzr Studio directly from a gitagent repository.
+---
+
+`gitagent lyzr` manages the lifecycle of agents on [Lyzr Studio](https://studio.lyzr.ai). You can create a new agent from a local gitagent directory, push updates, inspect the linked agent ID, or run a full clone-create-chat flow with a single command.
+
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `lyzr create` | Create a new agent on Lyzr Studio |
+| `lyzr update` | Push the current definition to an existing Lyzr agent |
+| `lyzr info` | Show the Lyzr agent ID linked to this directory |
+| `lyzr run` | Clone a repo, create it on Lyzr, and chat — all in one command |
+
+---
+
+## lyzr create
+
+Create a new agent on Lyzr Studio from the local gitagent definition. The returned agent ID is saved to `.lyzr_agent_id` for reuse by subsequent commands.
+
+```bash
+gitagent lyzr create [options]
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir <dir>` | `.` | Agent directory |
+| `--api-key <key>` | — | Lyzr API key (or set `LYZR_API_KEY` environment variable) |
+
+### What it does
+
+<Steps>
+  <Step title="Load and export">
+    Reads `agent.yaml` and exports the agent to the Lyzr Studio API payload format (same output as `gitagent export --format lyzr`).
+  </Step>
+  <Step title="POST to Lyzr">
+    Sends the payload to `POST /v3/agents/template/single-task`.
+  </Step>
+  <Step title="Save agent ID">
+    Writes the returned agent ID to `.lyzr_agent_id` in the agent directory.
+  </Step>
+</Steps>
+
+### Example
+
+```bash
+export LYZR_API_KEY="lyzr-..."
+gitagent lyzr create -d ./examples/lyzr-agent
+```
+
+```
+Creating Lyzr agent: research-assistant
+Version      1.0.0
+Description  AI-powered research assistant
+────────────────────────────
+✔ Agent created: abc123def456
+✔ Saved agent ID to .lyzr_agent_id
+
+Run your agent:
+  gitagent run -d ./examples/lyzr-agent -a lyzr -p "Hello"
+Or use curl:
+  curl -X POST 'https://agent-prod.studio.lyzr.ai/v3/inference/chat/' \
+    -H 'Content-Type: application/json' \
+    -H 'x-api-key: <YOUR_API_KEY>' \
+    -d '{"user_id":"user@example.com","agent_id":"abc123def456",...}'
+```
+
+---
+
+## lyzr update
+
+Push the current gitagent definition to an existing Lyzr agent. Reads the agent ID from `.lyzr_agent_id` by default, or accepts an explicit ID via `--agent-id`.
+
+```bash
+gitagent lyzr update [options]
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir <dir>` | `.` | Agent directory |
+| `--agent-id <id>` | — | Lyzr agent ID (falls back to `.lyzr_agent_id` if not provided) |
+| `--api-key <key>` | — | Lyzr API key (or set `LYZR_API_KEY`) |
+
+<Note>
+If neither `--agent-id` nor `.lyzr_agent_id` is found, the command exits with an error. Run `gitagent lyzr create` first.
+</Note>
+
+### Examples
+
+```bash
+# Update using the saved .lyzr_agent_id
+gitagent lyzr update -d ./examples/lyzr-agent
+
+# Update with an explicit agent ID
+gitagent lyzr update --agent-id abc123def456
+
+# Update with an explicit API key
+gitagent lyzr update --agent-id abc123def456 --api-key lyzr-...
+```
+
+---
+
+## lyzr info
+
+Show the Lyzr agent ID saved in `.lyzr_agent_id` and the inference URL for the linked agent.
+
+```bash
+gitagent lyzr info [options]
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir <dir>` | `.` | Agent directory |
+
+### Example
+
+```bash
+gitagent lyzr info -d ./examples/lyzr-agent
+```
+
+```
+Lyzr Agent
+Agent ID       abc123def456
+Inference URL  https://agent-prod.studio.lyzr.ai/v3/inference/chat/
+Studio         https://studio.lyzr.ai
+```
+
+If no `.lyzr_agent_id` exists, the command prints a message and exits cleanly:
+
+```
+No Lyzr agent linked. Run `gitagent lyzr create` to create one.
+```
+
+---
+
+## lyzr run
+
+A single command that clones a git repo (or uses a local directory), creates the agent on Lyzr Studio if needed, and sends a prompt — all in one step.
+
+```bash
+gitagent lyzr run [options]
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-r, --repo <url>` | — | Git repository URL to clone |
+| `-d, --dir <dir>` | — | Local agent directory (alternative to `--repo`) |
+| `-b, --branch <branch>` | `main` | Git branch or tag |
+| `--refresh` | `false` | Force re-clone (pull latest) |
+| `-p, --prompt <message>` | — | Message to send to the agent |
+| `--api-key <key>` | — | Lyzr API key (or set `LYZR_API_KEY`) |
+| `--user-id <id>` | — | User ID for the chat session |
+
+Either `--repo` or `--dir` is required.
+
+### Full one-liner behavior
+
+<Steps>
+  <Step title="Resolve the agent directory">
+    Clones the git repo to the cache (using `~/.gitagent/cache/<hash>/`) if `--repo` is provided, or uses the local directory directly.
+  </Step>
+  <Step title="Create on Lyzr (if needed)">
+    If `.lyzr_agent_id` does not exist in the agent directory, creates the agent via `POST /v3/agents/template/single-task` and saves the ID.
+  </Step>
+  <Step title="Send the prompt">
+    If `--prompt` is provided, sends the message to `POST /v3/inference/chat/` and prints the response. If no prompt is given, prints the agent ID and exits.
+  </Step>
+</Steps>
+
+### Examples
+
+```bash
+# Full one-liner: clone + create + chat
+gitagent lyzr run -r https://github.com/user/my-agent -p "Hello"
+
+# From a local directory
+gitagent lyzr run -d ./examples/lyzr-agent -p "Summarize AI trends"
+
+# Create only — no prompt
+gitagent lyzr run -r https://github.com/user/my-agent
+
+# Run from a specific branch
+gitagent lyzr run -r https://github.com/user/my-agent -b v2 -p "Hello"
+
+# Pass API key and user ID explicitly
+gitagent lyzr run -d ./my-agent --api-key lyzr-... --user-id user@example.com -p "Hello"
+```
+
+---
+
+## Lyzr API endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/v3/agents/template/single-task` | `POST` | Create a new agent |
+| `/v3/agents/template/single-task/{id}` | `PUT` | Update an existing agent |
+| `/v3/agents/{id}` | `GET` | Fetch agent details |
+| `/v3/inference/chat/` | `POST` | Send a chat message to an agent |
+
+Base URL: `https://agent-prod.studio.lyzr.ai`
+
+<Tip>
+Set `LYZR_API_KEY` in your environment to avoid passing `--api-key` on every command. Get your key from [studio.lyzr.ai](https://studio.lyzr.ai).
+</Tip>

@@ -1,0 +1,91 @@
+---
+title: "Spec v0.1.0 overview"
+description: "What the gitagent specification defines, its design goals, and a guide to every section."
+---
+
+The gitagent specification v0.1.0 defines a portable, version-controlled, human-readable format for AI agent definitions. An agent is fully described by files in a git repository — cloning the repository gives you a complete, runnable agent.
+
+This tab contains the normative specification reference. For conceptual explanations and how-to guides, see the [Documentation](/introduction) tab.
+
+## Design goals
+
+<CardGroup cols={2}>
+  <Card title="Framework-agnostic" icon="arrows-left-right">
+    Works with Claude Code, OpenAI, LangChain, CrewAI, AutoGen, and any framework that can read text files. Define once, run anywhere.
+  </Card>
+  <Card title="Git-native" icon="code-branch">
+    Version control, branching, diffing, and collaboration are built in. Every change is a commit. Every rollback is a checkout.
+  </Card>
+  <Card title="Compliance-ready" icon="shield-check">
+    First-class support for FINRA, Federal Reserve, SEC, CFPB, and interagency requirements, plus segregation of duties for multi-agent systems.
+  </Card>
+  <Card title="Composable" icon="puzzle-piece">
+    Agents can extend parent agents via `extends`, compose external agents via `dependencies`, and delegate to sub-agents defined in `agents/`.
+  </Card>
+</CardGroup>
+
+## Spec sections
+
+### Core files
+
+| Section | Page | What it covers |
+|---------|------|----------------|
+| `agent.yaml` | [Agent manifest](/spec/agent-yaml) | The manifest schema — required fields, all optional sections, compliance config |
+| `SOUL.md` | [SOUL.md](/spec/soul-md) | Agent identity and personality — what it must contain and recommended sections |
+| `RULES.md` | [RULES.md](/spec/rules-md) | Hard behavioral constraints and regulatory constraint subsections |
+| `DUTIES.md` | [DUTIES.md](/spec/duties-md) | Root-level SOD policy and per-agent role declaration |
+
+### Capability directories
+
+| Section | Page | What it covers |
+|---------|------|----------------|
+| `skills/` | [Skills standard](/spec/skills-standard) | Agent Skills open standard adoption, SKILL.md format, progressive disclosure, discovery paths, marketplace |
+| `tools/` | [Tool schema](/spec/tools-schema) | MCP-compatible tool YAML schema — input/output schemas, implementation, annotations |
+| `hooks/` | [Hooks schema](/spec/hooks-schema) | Lifecycle event handlers — events, hook entry fields, JSON stdin/stdout protocol |
+| `workflows/` | [Workflow schema](/spec/workflows-schema) | Structured YAML workflows — inputs, steps, expression syntax, error handling |
+| `memory/` | [Memory schema](/spec/memory-schema) | Persistent memory configuration — layers, update triggers, archive policy |
+| `knowledge/` | [Knowledge schema](/spec/knowledge-schema) | Knowledge index — document entries, tags, priority, always-load behavior |
+
+### Validation and schemas
+
+| Section | Page | What it covers |
+|---------|------|----------------|
+| Section 18 | [Validation rules](/spec/validation-rules) | All normative validation rules in numbered order |
+| Section 19a | [JSON schemas](/spec/json-schemas) | All 10 schemas in `spec/schemas/`, validation tooling |
+
+## JSON schemas
+
+All schemas are in the `spec/schemas/` directory of the [gitagent repository](https://github.com/open-gitagent/gitagent). Each schema uses JSON Schema draft 2020-12.
+
+Validate any agent with:
+
+```bash
+gitagent validate
+gitagent validate --compliance
+```
+
+For schema-based validation with external tools:
+
+```bash
+# Using ajv
+npx ajv validate -s spec/schemas/agent-yaml.schema.json -d agent.yaml
+
+# Using check-jsonschema
+check-jsonschema --schemafile spec/schemas/agent-yaml.schema.json agent.yaml
+```
+
+See [JSON schemas](/spec/json-schemas) for the full schema inventory.
+
+## Regulatory reference
+
+The [Regulatory Reference](/spec/regulatory-finra) group documents the external regulatory frameworks that the compliance configuration in `agent.yaml` maps to:
+
+- [FINRA rules](/spec/regulatory-finra) — Rules 2010, 2111, 2210, 3110, 3120, 4370, 4511 and regulatory notices
+- [Federal Reserve / interagency](/spec/regulatory-federal-reserve) — SR 11-7, SR 23-4, SR 21-8, CFPB Circular 2022-03
+- [Segregation of duties](/spec/regulatory-sod) — FINOS, SOC 2, SR 11-7 Section IV, FINRA 3110
+
+## Living document
+
+This specification is a living document. The current version is **v0.1.0**.
+
+Contributions are welcome. To propose changes, open a pull request against the [gitagent repository](https://github.com/open-gitagent/gitagent). Changes to normative rules require a spec version increment.

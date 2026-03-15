@@ -1,0 +1,509 @@
+---
+title: "agent.yaml schema reference"
+description: "Complete reference for the agent.yaml manifest — every required field, optional section, and compliance subsection with types and valid values."
+---
+
+`agent.yaml` is the only file in a gitagent repository with a strict schema. All other files are validated by their own schemas but are not hard-enforced at the spec level. The JSON schema for `agent.yaml` is at [`spec/schemas/agent-yaml.schema.json`](https://github.com/open-gitagent/gitagent/blob/main/spec/schemas/agent-yaml.schema.json).
+
+## Naming convention
+
+All YAML keys use **snake_case**. Agent names, skill names, and tool names use **kebab-case** (lowercase letters and hyphens, e.g., `my-agent`, `regulatory-analysis`). This convention applies uniformly across all gitagent files.
+
+## Required fields
+
+<ParamField path="name" type="string" required>
+  Agent identifier. Pattern: `^[a-z][a-z0-9-]*$`. Lowercase letters, digits, and hyphens. Must start with a letter.
+</ParamField>
+
+<ParamField path="version" type="string" required>
+  Semantic version. Pattern: `^X.Y.Z[-prerelease][+build]$`. Examples: `1.0.0`, `1.0.0-beta.1`, `2.3.0+build.42`.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  One-line description of the agent. Minimum 1 character.
+</ParamField>
+
+## Recommended fields
+
+<ParamField path="spec_version" type="string">
+  gitagent spec version this manifest targets. Example: `"0.1.0"`. Pattern: `^\d+\.\d+\.\d+$`.
+</ParamField>
+
+## Top-level optional fields
+
+<ParamField path="author" type="string">
+  Author name or organization.
+</ParamField>
+
+<ParamField path="license" type="string">
+  SPDX license identifier (e.g., `MIT`, `Apache-2.0`, `proprietary`).
+</ParamField>
+
+<ParamField path="extends" type="string">
+  Parent agent to inherit from. Accepts a git URL or local path. See [inheritance rules](#inheritance-rules).
+</ParamField>
+
+<ParamField path="skills" type="string[]">
+  Enabled skill directory names. Each entry must match `^[a-z][a-z0-9-]*$`. All referenced skills must exist in `skills/`.
+</ParamField>
+
+<ParamField path="tools" type="string[]">
+  Enabled tool file names without extension. Each entry must match `^[a-z][a-z0-9-]*$`. All referenced tools must exist in `tools/`.
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Categorization tags for search and filtering.
+</ParamField>
+
+<ParamField path="metadata" type="object">
+  Arbitrary key-value pairs. Values must be `string`, `number`, or `boolean`. No nested objects.
+</ParamField>
+
+## `model` section
+
+<ParamField path="model.preferred" type="string">
+  Primary model ID (e.g., `claude-opus-4-6`, `gpt-4o`).
+</ParamField>
+
+<ParamField path="model.fallback" type="string[]">
+  Fallback model IDs in priority order. Used when the preferred model is unavailable.
+</ParamField>
+
+<ParamField path="model.constraints" type="object">
+  Model parameter constraints applied at runtime.
+</ParamField>
+
+<Expandable title="model.constraints fields">
+  <ParamField path="model.constraints.temperature" type="number">
+    Sampling temperature. Range: `0`–`2`.
+  </ParamField>
+  <ParamField path="model.constraints.max_tokens" type="integer">
+    Maximum output tokens. Minimum: `1`.
+  </ParamField>
+  <ParamField path="model.constraints.top_p" type="number">
+    Nucleus sampling threshold. Range: `0`–`1`.
+  </ParamField>
+  <ParamField path="model.constraints.top_k" type="integer">
+    Top-k sampling. Minimum: `1`.
+  </ParamField>
+  <ParamField path="model.constraints.stop_sequences" type="string[]">
+    Sequences that stop generation.
+  </ParamField>
+  <ParamField path="model.constraints.presence_penalty" type="number">
+    Presence penalty. Range: `-2`–`2`.
+  </ParamField>
+  <ParamField path="model.constraints.frequency_penalty" type="number">
+    Frequency penalty. Range: `-2`–`2`.
+  </ParamField>
+</Expandable>
+
+## `runtime` section
+
+<ParamField path="runtime.max_turns" type="integer">
+  Maximum conversation turns. Minimum: `1`.
+</ParamField>
+
+<ParamField path="runtime.temperature" type="number">
+  Runtime temperature override. Range: `0`–`2`.
+</ParamField>
+
+<ParamField path="runtime.timeout" type="integer">
+  Timeout in seconds. Minimum: `1`.
+</ParamField>
+
+## `delegation` section
+
+<ParamField path="delegation.mode" type="enum">
+  How sub-agents are invoked. One of: `auto`, `explicit`, `router`.
+</ParamField>
+
+<ParamField path="delegation.router" type="string">
+  Router agent name. Required when `mode` is `router`.
+</ParamField>
+
+## `agents` section
+
+Sub-agent configuration. Each key is the sub-agent name. See [sub-agents](/concepts/sub-agents) for full directory and file formats.
+
+```yaml
+agents:
+  fact-checker:
+    description: Verifies claims against authoritative sources
+    delegation:
+      mode: auto
+      triggers:
+        - factual_claim_detected
+        - confidence_low
+```
+
+## `a2a` section
+
+<ParamField path="a2a.url" type="string (uri)">
+  A2A endpoint URL.
+</ParamField>
+
+<ParamField path="a2a.capabilities" type="string[]">
+  Declared A2A capabilities.
+</ParamField>
+
+<ParamField path="a2a.authentication.type" type="enum">
+  Authentication mechanism. One of: `none`, `api_key`, `oauth2`, `mtls`.
+</ParamField>
+
+<ParamField path="a2a.authentication.credentials_ref" type="string">
+  Reference to credentials — an environment variable name or secret path.
+</ParamField>
+
+<ParamField path="a2a.protocols" type="enum[]">
+  Supported server protocols. Values: `a2a`, `mcp`.
+</ParamField>
+
+## `dependencies` section
+
+Compose external agents as mounted capabilities. Each entry requires `name` and `source`.
+
+```yaml
+dependencies:
+  - name: fact-checker
+    source: https://github.com/org/fact-checker-agent.git
+    version: ^1.0.0
+    mount: agents/fact-checker
+    vendor_management:
+      due_diligence_date: 2026-01-15
+      soc_report: true
+      risk_assessment: low
+```
+
+<ParamField path="dependencies[].name" type="string" required>
+  Dependency identifier. Pattern: `^[a-z][a-z0-9-]*$`.
+</ParamField>
+
+<ParamField path="dependencies[].source" type="string" required>
+  Git URL, local path, or registry reference.
+</ParamField>
+
+<ParamField path="dependencies[].version" type="string">
+  Semver range (e.g., `^1.0.0`, `~2.3.0`).
+</ParamField>
+
+<ParamField path="dependencies[].mount" type="string">
+  Mount path relative to the agent root.
+</ParamField>
+
+<ParamField path="dependencies[].vendor_management.due_diligence_date" type="string (date)">
+  Date of last vendor due diligence review.
+</ParamField>
+
+<ParamField path="dependencies[].vendor_management.soc_report" type="boolean">
+  Whether a SOC 2 report was obtained for this vendor.
+</ParamField>
+
+<ParamField path="dependencies[].vendor_management.risk_assessment" type="enum">
+  Vendor risk rating. One of: `low`, `medium`, `high`, `critical`.
+</ParamField>
+
+## `registries` section
+
+Skill registry providers for marketplace integration.
+
+```yaml
+registries:
+  - name: skillsmp
+    url: https://api.skillsmp.com
+  - name: enterprise
+    url: https://skills.internal.company.com
+```
+
+## `compliance` section
+
+The `compliance` section enables regulatory adherence for agents operating in regulated environments.
+
+<ParamField path="compliance.risk_tier" type="enum" required>
+  Risk classification. One of: `low`, `standard`, `high`, `critical`. Required if the `compliance` section is present. High and critical tiers enforce stricter validation rules.
+</ParamField>
+
+<ParamField path="compliance.frameworks" type="string[]">
+  Applicable regulatory frameworks. Standard values: `finra`, `federal_reserve`, `sec`, `cfpb`, `occ`, `fdic`, `bsa_aml`. Custom values are accepted (e.g., `eu_ai_act`, `uk_fca`, `mas_singapore`, `gdpr`).
+</ParamField>
+
+### `compliance.supervision`
+
+Per FINRA Rule 3110.
+
+<ParamField path="compliance.supervision.designated_supervisor" type="string | null">
+  Principal responsible for oversight.
+</ParamField>
+
+<ParamField path="compliance.supervision.review_cadence" type="enum">
+  How often the agent is reviewed. One of: `daily`, `weekly`, `monthly`, `quarterly`, `semi_annual`, `annual`.
+</ParamField>
+
+<ParamField path="compliance.supervision.human_in_the_loop" type="enum">
+  Level of human involvement. One of: `always`, `conditional`, `advisory`, `none`. `high` and `critical` tiers require `always` or `conditional`.
+</ParamField>
+
+<ParamField path="compliance.supervision.escalation_triggers" type="object[]">
+  Typed trigger conditions. Each trigger is one of: `confidence_below` (number 0–1), `action_type` (string), `error_detected` (boolean), `data_classification_above` (enum), `token_count_above` (integer), `custom` (string).
+</ParamField>
+
+<ParamField path="compliance.supervision.override_capability" type="boolean">
+  Whether humans can override any agent decision.
+</ParamField>
+
+<ParamField path="compliance.supervision.kill_switch" type="boolean">
+  Whether the agent can be immediately halted.
+</ParamField>
+
+### `compliance.recordkeeping`
+
+Per FINRA Rule 4511 / SEC 17a-4.
+
+<ParamField path="compliance.recordkeeping.audit_logging" type="boolean">
+  Whether all decisions and actions are logged. Required `true` for `high` and `critical` tiers.
+</ParamField>
+
+<ParamField path="compliance.recordkeeping.log_format" type="enum">
+  Format of audit log entries. One of: `structured_json`, `plaintext`.
+</ParamField>
+
+<ParamField path="compliance.recordkeeping.retention_period" type="string">
+  Minimum retention period. Format: `<number><unit>` where unit is `y` (years), `m` (months), `d` (days). FINRA 4511 minimum is `6y`.
+</ParamField>
+
+<ParamField path="compliance.recordkeeping.log_contents" type="enum[]">
+  Categories of data to log. Valid values: `prompts_and_responses`, `tool_calls`, `decision_pathways`, `model_version`, `timestamps`.
+</ParamField>
+
+<ParamField path="compliance.recordkeeping.immutable" type="boolean">
+  Whether logs are write-once (WORM). Required for SEC 17a-4 compliance.
+</ParamField>
+
+### `compliance.model_risk`
+
+Per SR 11-7.
+
+<ParamField path="compliance.model_risk.inventory_id" type="string | null">
+  ID in the firm's model inventory.
+</ParamField>
+
+<ParamField path="compliance.model_risk.validation_cadence" type="enum">
+  How often the model is validated. One of: `monthly`, `quarterly`, `semi_annual`, `annual`. `high` and `critical` tiers require `quarterly` or more frequent.
+</ParamField>
+
+<ParamField path="compliance.model_risk.validation_type" type="enum">
+  Type of validation. One of: `full` (three-pillar SR 11-7), `targeted` (specific area), `change_based` (triggered by changes).
+</ParamField>
+
+<ParamField path="compliance.model_risk.ongoing_monitoring" type="boolean">
+  Whether continuous performance monitoring is active. Required `true` when `federal_reserve` is in `frameworks`.
+</ParamField>
+
+<ParamField path="compliance.model_risk.outcomes_analysis" type="boolean">
+  Whether model outputs are compared to actual results (back-testing).
+</ParamField>
+
+<ParamField path="compliance.model_risk.drift_detection" type="boolean">
+  Whether model degradation is monitored over time.
+</ParamField>
+
+<ParamField path="compliance.model_risk.parallel_testing" type="boolean">
+  Whether the model is running alongside an existing system for comparison.
+</ParamField>
+
+### `compliance.data_governance`
+
+<ParamField path="compliance.data_governance.pii_handling" type="enum">
+  How PII is handled. One of: `redact` (strip from outputs), `encrypt` (encrypt at rest), `prohibit` (reject PII input), `allow` (no restrictions).
+</ParamField>
+
+<ParamField path="compliance.data_governance.data_classification" type="enum">
+  Maximum data sensitivity level. One of: `public`, `internal`, `confidential`, `restricted`.
+</ParamField>
+
+<ParamField path="compliance.data_governance.consent_required" type="boolean">
+  Whether explicit user consent is required before data processing.
+</ParamField>
+
+<ParamField path="compliance.data_governance.cross_border" type="boolean">
+  Whether data may cross jurisdictional boundaries.
+</ParamField>
+
+<ParamField path="compliance.data_governance.bias_testing" type="boolean">
+  Whether regular bias testing is performed.
+</ParamField>
+
+<ParamField path="compliance.data_governance.lda_search" type="boolean">
+  Whether Less Discriminatory Alternative search is required (CFPB Circular 2022-03).
+</ParamField>
+
+### `compliance.communications`
+
+Per FINRA Rule 2210.
+
+<ParamField path="compliance.communications.type" type="enum">
+  Communication type. One of: `correspondence` (≤25 retail investors/30 days), `retail` (>25 retail investors/30 days), `institutional` (institutional investors only).
+</ParamField>
+
+<ParamField path="compliance.communications.pre_review_required" type="boolean">
+  Whether principal pre-approval is required before sending.
+</ParamField>
+
+<ParamField path="compliance.communications.fair_balanced" type="boolean">
+  Whether outputs must be fair and balanced. Required `true` when `finra` is in `frameworks`.
+</ParamField>
+
+<ParamField path="compliance.communications.no_misleading" type="boolean">
+  Whether misleading, exaggerated, or promissory statements are prohibited. Required `true` when `finra` is in `frameworks`.
+</ParamField>
+
+<ParamField path="compliance.communications.disclosures_required" type="boolean">
+  Whether the AI-generated nature must be disclosed to recipients.
+</ParamField>
+
+### `compliance.vendor_management`
+
+Per SR 23-4.
+
+<ParamField path="compliance.vendor_management.due_diligence_complete" type="boolean">
+  Whether vendor due diligence has been performed.
+</ParamField>
+
+<ParamField path="compliance.vendor_management.soc_report_required" type="boolean">
+  Whether a SOC 2 Type II report is required from vendors.
+</ParamField>
+
+<ParamField path="compliance.vendor_management.vendor_ai_notification" type="boolean">
+  Whether vendors must notify you of AI or model changes.
+</ParamField>
+
+<ParamField path="compliance.vendor_management.subcontractor_assessment" type="boolean">
+  Whether fourth-party (subcontractor) risk has been assessed.
+</ParamField>
+
+### `compliance.segregation_of_duties`
+
+See the full reference at [DUTIES.md](/spec/duties-md) and [SOD regulatory reference](/spec/regulatory-sod).
+
+<ParamField path="compliance.segregation_of_duties.roles" type="object[]">
+  Roles in the system. Minimum 2 roles required. Each role has `id` (snake_case), `description`, and `permissions` (`create`, `submit`, `review`, `approve`, `reject`, `execute`, `audit`, `report`).
+</ParamField>
+
+<ParamField path="compliance.segregation_of_duties.conflicts" type="array[string[2]]">
+  SOD conflict matrix. Each entry is a pair of role IDs that cannot be held by the same agent.
+</ParamField>
+
+<ParamField path="compliance.segregation_of_duties.assignments" type="object">
+  Maps agent names to their assigned roles.
+</ParamField>
+
+<ParamField path="compliance.segregation_of_duties.isolation.state" type="enum">
+  State isolation level. One of: `full` (no cross-access), `shared` (read-only cross-access), `none`.
+</ParamField>
+
+<ParamField path="compliance.segregation_of_duties.isolation.credentials" type="enum">
+  Credential scope. One of: `separate` (each role has its own credentials), `shared`.
+</ParamField>
+
+<ParamField path="compliance.segregation_of_duties.handoffs" type="object[]">
+  Critical actions requiring multi-role participation. Each entry has `action` (string), `required_roles` (minimum 2), and `approval_required` (boolean, default `true`).
+</ParamField>
+
+<ParamField path="compliance.segregation_of_duties.enforcement" type="enum">
+  Enforcement mode. One of: `strict` (SOD violations are errors), `advisory` (SOD violations are warnings). Default: `strict`.
+</ParamField>
+
+## Inheritance rules
+
+When `extends` is set, fields are resolved as follows:
+
+| File | Resolution |
+|------|------------|
+| `agent.yaml` | Child fields override parent fields (deep merge) |
+| `SOUL.md` | Child replaces parent entirely |
+| `RULES.md` | Child rules append to parent rules (union) |
+| `skills/`, `tools/` | Union with child shadowing parent on name collision |
+| `memory/` | Isolated per agent — not inherited |
+| `compliance/` | Child inherits parent compliance config; child can override |
+
+## Minimal example
+
+```yaml
+spec_version: "0.1.0"
+name: my-agent
+version: 0.1.0
+description: A helpful assistant agent
+```
+
+## Full regulated example
+
+```yaml
+spec_version: "0.1.0"
+name: compliance-analyst
+version: 1.0.0
+description: Financial compliance analysis agent
+author: Acme Financial
+license: proprietary
+model:
+  preferred: claude-opus-4-6
+  fallback:
+    - claude-sonnet-4-5-20250929
+  constraints:
+    temperature: 0.1
+    max_tokens: 8192
+skills:
+  - regulatory-analysis
+  - document-review
+tools:
+  - search-regulations
+  - generate-report
+runtime:
+  max_turns: 50
+  timeout: 300
+compliance:
+  risk_tier: high
+  frameworks:
+    - finra
+    - federal_reserve
+    - sec
+  supervision:
+    designated_supervisor: chief-compliance-officer
+    review_cadence: monthly
+    human_in_the_loop: always
+    escalation_triggers:
+      - confidence_below: 0.85
+      - action_type: regulatory_filing
+      - error_detected: true
+    override_capability: true
+    kill_switch: true
+  recordkeeping:
+    audit_logging: true
+    log_format: structured_json
+    retention_period: 7y
+    log_contents:
+      - prompts_and_responses
+      - tool_calls
+      - decision_pathways
+      - model_version
+      - timestamps
+    immutable: true
+  model_risk:
+    inventory_id: MRM-2024-0047
+    validation_cadence: quarterly
+    validation_type: full
+  data_governance:
+    pii_handling: redact
+    data_classification: restricted
+    consent_required: true
+    bias_testing: true
+    lda_search: true
+  communications:
+    type: institutional
+    pre_review_required: true
+    fair_balanced: true
+    no_misleading: true
+    disclosures_required: true
+tags:
+  - compliance
+  - financial-services
+  - regulated
+```

@@ -1,0 +1,151 @@
+---
+title: "Skills standard"
+description: "How gitagent adopts the Agent Skills open standard — SKILL.md format, progressive disclosure, discovery paths, and marketplace architecture."
+---
+
+gitagent fully adopts the **Agent Skills open standard** ([agentskills.io](https://agentskills.io)) for its `skills/` directory. Any valid Agent Skills skill works in gitagent with zero modification, and gitagent skills work in Claude Code, Codex, VS Code, Cursor, Gemini CLI, and all other tools that support the standard.
+
+## SKILL.md format
+
+Skills use YAML frontmatter. The following fields are defined by the Agent Skills spec:
+
+<ParamField path="name" type="string" required>
+  Skill identifier. Kebab-case, maximum 64 characters. No consecutive hyphens (`--`). No leading or trailing hyphens. Pattern: `^[a-z](?:[a-z0-9]|-(?!-))*[a-z0-9]$|^[a-z]$`.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  What this skill does. Maximum 1024 characters.
+</ParamField>
+
+<ParamField path="license" type="string">
+  SPDX license identifier or `proprietary`.
+</ParamField>
+
+<ParamField path="compatibility" type="string">
+  Free-text compatibility notes. Maximum 500 characters.
+</ParamField>
+
+<ParamField path="allowed-tools" type="string">
+  Space-delimited list of tool names this skill may invoke. Experimental.
+</ParamField>
+
+<ParamField path="metadata" type="object">
+  Arbitrary string-to-string key-value pairs. The Agent Skills standard requires all metadata values to be strings.
+</ParamField>
+
+## gitagent-specific metadata extensions
+
+gitagent-specific extensions live inside `metadata`, preserving full portability with any other Agent Skills-compatible tool:
+
+| Metadata key | Description |
+|---|---|
+| `category` | Skill category (e.g., `compliance`, `analysis`, `generation`) |
+| `risk_tier` | Risk tier for this skill (`low`, `standard`, `high`, `critical`) |
+| `regulatory_frameworks` | Comma-separated list of applicable frameworks (e.g., `finra,sec,federal_reserve`) |
+
+## Progressive disclosure (3-tier loading)
+
+Skills follow the Agent Skills standard's progressive disclosure model to manage token usage:
+
+<Steps>
+  <Step title="Metadata only (~100 tokens)">
+    `name` + `description` only. Used for listing and routing decisions. The runtime reads this tier when deciding which skills are relevant to a task.
+  </Step>
+  <Step title="Full skill (<5000 tokens recommended)">
+    Complete frontmatter and instruction body. Used when the skill is actively invoked. Stays under 5000 tokens for efficient context loading.
+  </Step>
+  <Step title="With resources">
+    Optional `scripts/`, `references/`, `assets/`, and `agents/` directories. Loaded on demand when the skill's instructions reference them.
+  </Step>
+</Steps>
+
+## Skill discovery paths
+
+Skills are discovered from multiple standard locations in priority order. Higher-priority sources win on name collision.
+
+| Priority | Path | Source |
+|----------|------|--------|
+| 1 (highest) | `<agentDir>/skills/` | Agent-local |
+| 2 | `<agentDir>/.agents/skills/` | agentskills.io standard |
+| 3 | `<agentDir>/.claude/skills/` | Claude Code |
+| 4 | `<agentDir>/.github/skills/` | GitHub |
+| 5 (lowest) | `~/.agents/skills/` | Personal global |
+
+## Skill directory structure
+
+```
+skills/
+└── skill-name/
+    ├── SKILL.md               # Instructions + frontmatter (required)
+    ├── scripts/               # Executable helpers
+    ├── references/            # Supporting documentation
+    ├── assets/                # Templates, schemas
+    ├── agents/                # Agent-specific config (e.g., openai.yaml)
+    └── examples/              # Example inputs and outputs
+```
+
+Only `SKILL.md` is required. All other subdirectories are optional.
+
+## Marketplace architecture
+
+The marketplace architecture is provider-agnostic. Registry providers are configured in `agent.yaml`:
+
+```yaml
+registries:
+  - name: skillsmp
+    url: https://api.skillsmp.com
+  - name: enterprise
+    url: https://skills.internal.company.com
+```
+
+### Built-in providers
+
+| Provider | Description |
+|----------|-------------|
+| `skillsmp` | SkillsMP marketplace (default) |
+| `github` | Install directly from GitHub repositories |
+| `local` | Install from local filesystem paths |
+
+### Skills CLI commands
+
+| Command | Description |
+|---------|-------------|
+| `gitagent skills search <query>` | Search for skills in a registry |
+| `gitagent skills install <name>` | Install a skill from a registry |
+| `gitagent skills list` | List all discovered skills |
+| `gitagent skills info <name>` | Show detailed skill information |
+
+Options: `--provider <name>`, `--global` (install to `~/.agents/skills/`), `--dir <dir>`
+
+## Full SKILL.md example
+
+```markdown
+---
+name: regulatory-analysis
+description: Analyze documents for regulatory compliance
+license: proprietary
+allowed-tools: search-regulations
+metadata:
+  author: gitagent-examples
+  version: "1.0.0"
+  category: compliance
+  risk_tier: high
+  regulatory_frameworks: finra,sec,federal_reserve,cfpb
+---
+
+# Regulatory Analysis
+
+## Instructions
+When analyzing a document for regulatory compliance:
+1. Identify the applicable regulatory framework
+2. Map document contents to specific rules
+3. Flag potential violations with rule citations
+4. Recommend remediation steps
+
+## Output Format
+Use structured findings with severity levels: CRITICAL, HIGH, MEDIUM, LOW.
+```
+
+## JSON schema
+
+The `SKILL.md` frontmatter is validated by [`spec/schemas/skill.schema.json`](https://github.com/open-gitagent/gitagent/blob/main/spec/schemas/skill.schema.json). See [JSON schemas](/spec/json-schemas) for the full schema inventory.

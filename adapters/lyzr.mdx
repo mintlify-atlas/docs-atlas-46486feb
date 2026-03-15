@@ -1,0 +1,146 @@
+---
+title: "Lyzr adapter"
+description: "Deploy your gitagent agent to Lyzr Studio via REST API and query it with the inference endpoint."
+---
+
+The `lyzr` adapter converts your gitagent directory into a Lyzr Studio API payload, creates the agent on Lyzr's hosted platform, and sends your prompt to the inference endpoint. The agent ID is saved to `.lyzr_agent_id` so subsequent runs reuse the same agent without re-creating it.
+
+## Requirements
+
+- `LYZR_API_KEY` environment variable set (get yours from [Lyzr Studio](https://studio.lyzr.ai))
+- `-p` prompt flag (required — Lyzr has no interactive mode)
+
+## How it works
+
+<Steps>
+  <Step title="Verify credentials">
+    The runner checks for `LYZR_API_KEY` (or `--api-key`). If neither is present, the process exits with an error.
+  </Step>
+  <Step title="Check for existing agent">
+    If `.lyzr_agent_id` exists in the agent directory, its contents are used as the agent ID and the creation step is skipped.
+  </Step>
+  <Step title="Create agent on Lyzr Studio">
+    If no `.lyzr_agent_id` exists, the adapter calls `exportToLyzr` to build the payload, then sends a `POST` request to the Lyzr agents endpoint. The returned `agent_id` is saved to `.lyzr_agent_id` for reuse.
+  </Step>
+  <Step title="Send prompt to inference API">
+    A `POST` request is sent to the Lyzr chat endpoint with the agent ID, a generated session ID, and your prompt. The response is printed to stdout.
+  </Step>
+</Steps>
+
+## API flow
+
+```
+POST https://agent-prod.studio.lyzr.ai/v3/agents/template/single-task
+     Body: { name, description, agent_role, agent_goal, agent_instructions,
+             provider_id, model, temperature, top_p, llm_credential_id,
+             store_messages, features, file_output }
+     Response: { agent_id: "..." }
+          ↓  saved to .lyzr_agent_id
+
+POST https://agent-prod.studio.lyzr.ai/v3/inference/chat/
+     Body: { user_id, agent_id, session_id, message }
+     Response: { response: "..." }
+          ↓  printed to stdout
+```
+
+## Lyzr API endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/v3/agents/template/single-task` | `POST` | Create agent |
+| `/v3/agents/template/single-task/{id}` | `PUT` | Update agent |
+| `/v3/agents/{id}` | `GET` | Fetch agent |
+| `/v3/inference/chat/` | `POST` | Chat with agent |
+
+Base URL: `https://agent-prod.studio.lyzr.ai`
+
+## API payload structure
+
+The adapter maps `agent.yaml` fields to Lyzr API fields as follows:
+
+| Lyzr field | Source |
+|------------|--------|
+| `name` | `agent.yaml` `name` |
+| `description` | `agent.yaml` `description` |
+| `agent_role` | First line of `## Core Identity` section in `SOUL.md`, or `description` |
+| `agent_goal` | First line of `## Values/Purpose/Goal/Mission` section in `SOUL.md`, or `description` |
+| `agent_instructions` | Full assembled system prompt (SOUL + RULES + skills + compliance + memory) |
+| `provider_id` | Mapped from model name (see table below) |
+| `model` | `agent.yaml` `model.preferred` |
+| `temperature` | `model.constraints.temperature` or `runtime.temperature`, defaulting to `0.3` |
+| `top_p` | `model.constraints.top_p`, defaulting to `0.9` |
+| `llm_credential_id` | Mapped from provider (see table below) |
+| `features` | Always includes `MEMORY` with `max_messages_context_count: 50` |
+| `store_messages` | Always `true` |
+| `file_output` | Always `false` |
+
+## Model-to-provider mapping
+
+| Model prefix | Lyzr `provider_id` | `llm_credential_id` |
+|-------------|--------------------|-----------------------|
+| `claude-*` | `Anthropic` | `lyzr_anthropic` |
+| `gpt-*`, `o1-*`, `o3-*` | `OpenAI` | `lyzr_openai` |
+| `gemini-*` | `Google` | `lyzr_google` |
+| *(default)* | `OpenAI` | `lyzr_openai` |
+
+## The .lyzr_agent_id file
+
+After the first successful agent creation, gitagent writes the Lyzr agent ID to `.lyzr_agent_id` in the agent directory:
+
+```
+.lyzr_agent_id
+```
+
+Contents: a single line with the Lyzr agent ID, e.g. `agt_abc123`.
+
+On subsequent `gitagent run -a lyzr` calls, this file is read and the creation step is skipped entirely. To force re-creation, delete the file.
+
+<Tip>
+Commit `.lyzr_agent_id` to your git repository if you want your team to share the same Lyzr agent instance. Add it to `.gitignore` if each developer should create their own.
+</Tip>
+
+## Export format
+
+You can inspect the Lyzr API payload without creating an agent:
+
+```bash
+# Print JSON payload to stdout
+gitagent export -f lyzr -d ./my-agent
+
+# Save to file
+gitagent export -f lyzr -d ./my-agent -o payload.json
+```
+
+## Examples
+
+<CodeGroup>
+
+```bash basic run
+export LYZR_API_KEY="lyzr-..."
+gitagent run -d ./my-agent -a lyzr -p "Summarize recent AI developments"
+```
+
+```bash from git repo
+export LYZR_API_KEY="lyzr-..."
+gitagent run -r https://github.com/user/my-agent -a lyzr -p "Hello"
+```
+
+```bash lyzr subcommand (full workflow)
+# Create, update, and run with the dedicated lyzr command
+gitagent lyzr create -d ./my-agent
+gitagent lyzr run -d ./my-agent -p "What can you help me with?"
+```
+
+```bash export payload
+gitagent export -f lyzr -d ./my-agent
+```
+
+</CodeGroup>
+
+<Note>
+The `gitagent lyzr` subcommand provides additional operations (`create`, `update`, `info`, `run`) for managing Lyzr agents. See the [lyzr CLI reference](/cli/lyzr) for details.
+</Note>
+
+<Warning>
+The `-p` prompt flag is required. If you omit it, the adapter exits immediately with an error. There is no interactive fallback with the Lyzr API.
+</Warning>

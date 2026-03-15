@@ -1,0 +1,199 @@
+---
+title: "Workflows"
+description: "Multi-step procedures in GitAgent — structured YAML format, narrative markdown, and step field reference."
+---
+
+Workflows define multi-step procedures that your agent can execute. They live in the `workflows/` directory and come in two formats: **structured YAML** for machine-readable pipelines with explicit dependencies, and **narrative markdown** for human-readable playbooks.
+
+## What workflows are
+
+A workflow is a named sequence of steps that an agent follows to complete a complex task. Steps can:
+
+- Call skills, tools, or sub-agents
+- Reference outputs from previous steps using `${{ steps.<id>.outputs.<field> }}` expressions
+- Declare dependencies with `depends_on` to define execution order
+- Run conditionally based on step outputs
+- Require human approval for critical actions
+
+Workflows sit in `workflows/` alongside your agent's other files:
+
+```
+workflows/
+├── regulatory-review.yaml   # Structured workflow
+└── onboarding.md            # Narrative workflow
+```
+
+## Structured YAML format
+
+Structured workflows use YAML and are the recommended format for any workflow that involves conditional logic, parallel steps, or external tool/agent calls.
+
+### Top-level fields
+
+<ParamField path="name" type="string" required>
+  Workflow identifier in kebab-case.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Human-readable description of what this workflow accomplishes.
+</ParamField>
+
+<ParamField path="version" type="string">
+  Semantic version of this workflow definition.
+</ParamField>
+
+<ParamField path="inputs" type="object[]">
+  Input parameters the workflow accepts. Each input has `name`, `type`, `required`, `default`, and `description` fields.
+</ParamField>
+
+<ParamField path="outputs" type="object[]">
+  Output values the workflow produces. Each output has `name`, `type`, and `description` fields.
+</ParamField>
+
+<ParamField path="steps" type="object[]">
+  Ordered list of steps. Steps with `depends_on` are executed after their dependencies complete.
+</ParamField>
+
+<ParamField path="error_handling" type="object">
+  What to do when a step fails. `on_step_failure` can be `escalate`, `abort`, or `continue`. `escalation_target` names the person or role to notify.
+</ParamField>
+
+### Step fields
+
+<ParamField path="steps[].id" type="string" required>
+  Unique step identifier used for references in `depends_on` and output expressions.
+</ParamField>
+
+<ParamField path="steps[].action" type="string" required>
+  Natural language description of what this step does.
+</ParamField>
+
+<ParamField path="steps[].skill" type="string">
+  Name of the skill to use for this step.
+</ParamField>
+
+<ParamField path="steps[].tool" type="string">
+  Name of the tool to call for this step.
+</ParamField>
+
+<ParamField path="steps[].agent" type="string">
+  Name of the sub-agent to delegate this step to.
+</ParamField>
+
+<ParamField path="steps[].inputs" type="object">
+  Input values for this step. Can reference previous step outputs using `${{ steps.<id>.outputs.<field> }}`.
+</ParamField>
+
+<ParamField path="steps[].outputs" type="string[]">
+  Names of values this step produces, available to subsequent steps.
+</ParamField>
+
+<ParamField path="steps[].depends_on" type="string[]">
+  Step IDs that must complete before this step runs.
+</ParamField>
+
+<ParamField path="steps[].conditions" type="string[]">
+  Boolean expressions that must all be true for this step to run. Use `${{ }}` expressions.
+</ParamField>
+
+<ParamField path="steps[].compliance" type="object">
+  Compliance metadata for this step. `audit_level` can be `none`, `summary`, `detailed`, or `full`. `requires_approval: true` gates the step on human approval.
+</ParamField>
+
+### Full example
+
+```yaml
+name: regulatory-review
+description: Complete regulatory compliance review workflow
+version: 1.0.0
+inputs:
+  - name: document
+    type: file
+    required: true
+    description: Document to review
+  - name: framework
+    type: string
+    default: all
+    description: Regulatory framework to apply
+outputs:
+  - name: report
+    type: string
+    description: Compliance analysis report
+steps:
+  - id: classify
+    action: Classify document type and identify applicable regulations
+    skill: regulatory-analysis
+    outputs: [doc_type, applicable_rules, risk_level]
+    compliance:
+      audit_level: detailed
+
+  - id: analyze
+    action: Analyze document against each applicable rule
+    depends_on: [classify]
+    skill: regulatory-analysis
+    inputs:
+      rules: ${{ steps.classify.outputs.applicable_rules }}
+    outputs: [findings, confidence_scores]
+    compliance:
+      audit_level: full
+
+  - id: verify-facts
+    action: Verify factual claims in the analysis
+    depends_on: [analyze]
+    agent: fact-checker
+    inputs:
+      claims: ${{ steps.analyze.outputs.findings }}
+    outputs: [verified_findings]
+    compliance:
+      audit_level: detailed
+
+  - id: human-review
+    action: Route high-severity findings for human review
+    depends_on: [verify-facts]
+    skill: document-review
+    conditions:
+      - ${{ steps.analyze.outputs.findings.critical_count > 0 }}
+    compliance:
+      requires_approval: true
+      audit_level: full
+
+  - id: generate-report
+    action: Generate final compliance report
+    depends_on: [verify-facts, human-review]
+    tool: generate-report
+    inputs:
+      title: "Regulatory Compliance Review"
+      findings: ${{ steps.verify-facts.outputs.verified_findings }}
+    outputs: [report]
+    compliance:
+      audit_level: full
+
+error_handling:
+  on_step_failure: escalate
+  escalation_target: chief-compliance-officer
+```
+
+## Narrative markdown format
+
+For simpler procedures, you can write workflows as plain markdown files. Narrative workflows are human-readable playbooks — the agent reads and follows them, but they don't have structured execution semantics.
+
+```markdown
+# Onboarding workflow
+
+## Step 1: Gather requirements
+Ask the user for their primary use case and any compliance requirements.
+Summarize what you learn before proceeding.
+
+## Step 2: Recommend a template
+Based on the requirements, recommend one of:
+- `minimal` — for prototyping and exploration
+- `standard` — for most production agents
+- `full` — for regulated environments requiring compliance artifacts
+
+## Step 3: Scaffold the agent
+Run `gitagent init --template <choice>` and walk the user through customizing
+`agent.yaml` and `SOUL.md`.
+```
+
+<Note>
+The JSON schema for structured workflows is at `spec/schemas/workflow.schema.json`. Run `gitagent validate` to check your workflow files.
+</Note>

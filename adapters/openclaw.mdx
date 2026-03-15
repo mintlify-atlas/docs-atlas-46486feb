@@ -1,0 +1,127 @@
+---
+title: "OpenClaw adapter"
+description: "Create a temporary OpenClaw workspace from your gitagent definition and run the embedded agent locally."
+---
+
+The `openclaw` adapter translates your gitagent directory into an [OpenClaw](https://openclaw.ai) workspace, auto-provisions authentication from `ANTHROPIC_API_KEY`, and runs the embedded local agent via `openclaw agent --local`. A prompt is required — OpenClaw has no interactive mode.
+
+## Requirements
+
+- [OpenClaw CLI](https://openclaw.ai) installed (`npm install -g openclaw@latest`)
+- `ANTHROPIC_API_KEY` environment variable set
+- `-p` prompt flag (required — the adapter exits with an error if omitted)
+
+## How it works
+
+<Steps>
+  <Step title="Auto-provision auth">
+    If `~/.openclaw/agents/main/agent/auth-profiles.json` does not exist, gitagent creates it automatically with the contents of `ANTHROPIC_API_KEY`. This means you do not need to run any OpenClaw setup commands before using this adapter.
+  </Step>
+  <Step title="Export to OpenClaw format">
+    The adapter calls `exportToOpenClaw`, which produces a structured workspace object containing:
+    - `openclaw.json` — agent config with model mapping, temperature, and max turns
+    - `AGENTS.md` — identity header, `RULES.md` content, knowledge base, compliance constraints, and sub-agent definitions
+    - `SOUL.md` — passed through unchanged
+    - `TOOLS.md` — tool definitions rendered as markdown
+    - `skills/<name>/SKILL.md` — each skill file passed through unchanged
+  </Step>
+  <Step title="Write workspace to a temp directory">
+    All workspace files are written to a randomly-named directory under the system temp directory. The `openclaw.json` config is updated to point `workspace` at this directory.
+  </Step>
+  <Step title="Run the agent">
+    `openclaw agent --local --session-id <id> --message <prompt>` is spawned with `stdio: 'inherit'` and `OPENCLAW_CONFIG` set to the path of the temp `openclaw.json`.
+  </Step>
+  <Step title="Clean up">
+    The entire temp workspace directory is deleted after OpenClaw exits, regardless of exit status.
+  </Step>
+</Steps>
+
+## Workspace structure
+
+The temp workspace written by the adapter looks like this:
+
+```
+/tmp/gitagent-openclaw-<hash>/
+├── openclaw.json
+├── AGENTS.md
+├── SOUL.md
+├── TOOLS.md            (only if tools/ directory exists)
+└── skills/
+    └── <skill-name>/
+        └── SKILL.md
+```
+
+## Model mapping
+
+OpenClaw uses vendor-prefixed model names. The adapter converts bare model names automatically:
+
+| agent.yaml model | openclaw.json model |
+|-----------------|---------------------|
+| `claude-opus-4-6` | `anthropic/claude-opus-4-6` |
+| `gpt-4.1` | `openai/gpt-4.1` |
+| `anthropic/claude-opus-4-6` | `anthropic/claude-opus-4-6` (unchanged) |
+| *(default)* | `anthropic/claude-sonnet-4-5-20250929` |
+
+## Auth auto-provisioning
+
+gitagent writes auth to `~/.openclaw/agents/main/agent/auth-profiles.json` on first use:
+
+```json auth-profiles.json
+{
+  "anthropic": {
+    "apiKey": "<value of ANTHROPIC_API_KEY>"
+  }
+}
+```
+
+If the file already exists, it is left unchanged.
+
+## Human-in-the-loop mode
+
+When your agent sets `human_in_the_loop: always`, the adapter adds `--thinking high` to the OpenClaw CLI invocation:
+
+```yaml agent.yaml
+compliance:
+  supervision:
+    human_in_the_loop: always
+```
+
+```bash
+# Equivalent flag added automatically
+openclaw agent --local --session-id <id> --message <prompt> --thinking high
+```
+
+## Export format
+
+You can inspect the full workspace output without running it:
+
+```bash
+# Print all workspace files to stdout
+gitagent export -f openclaw -d ./my-agent
+```
+
+The output shows each file preceded by a `# === <filename> ===` header.
+
+## Examples
+
+<CodeGroup>
+
+```bash basic run
+export ANTHROPIC_API_KEY="sk-ant-..."
+gitagent run -d ./my-agent -a openclaw -p "Review the authentication module"
+```
+
+```bash from git repo
+export ANTHROPIC_API_KEY="sk-ant-..."
+gitagent run -r https://github.com/user/my-agent -a openclaw -p "What does this agent do?"
+```
+
+```bash export workspace files
+gitagent export -f openclaw -d ./my-agent
+```
+
+</CodeGroup>
+
+<Warning>
+The `-p` prompt flag is required. If you omit it, the adapter exits immediately with an error before spawning OpenClaw. There is no interactive fallback.
+</Warning>

@@ -1,0 +1,130 @@
+---
+title: "Nanobot adapter"
+description: "Run a gitagent agent interactively or as a one-shot query via the Nanobot CLI, with auto-provisioned auth."
+---
+
+The `nanobot` adapter translates your gitagent directory into a Nanobot config and system prompt, auto-provisions `ANTHROPIC_API_KEY` into the Nanobot config directory, then launches `nanobot agent` in either interactive or one-shot mode.
+
+## Requirements
+
+- [Nanobot](https://nanobot.ai) CLI installed (`pip install nanobot-ai` or `uv tool install nanobot-ai`)
+- `ANTHROPIC_API_KEY` environment variable set
+
+## How it works
+
+<Steps>
+  <Step title="Auto-provision auth">
+    If `~/.nanobot/config.json` does not exist, gitagent creates it from `ANTHROPIC_API_KEY`. This means you can start using the Nanobot adapter without running any Nanobot setup first.
+  </Step>
+  <Step title="Export to Nanobot format">
+    The adapter calls `exportToNanobot`, which produces two artifacts:
+    - `config.json` — provider and model settings
+    - System prompt — assembled from `SOUL.md`, `RULES.md`, skills, knowledge, tools, compliance constraints, and memory
+  </Step>
+  <Step title="Write to a temp directory">
+    Both artifacts are written to a randomly-named directory under the system temp directory: `config.json` and `system-prompt.md`.
+  </Step>
+  <Step title="Run Nanobot">
+    `nanobot agent` is spawned with two environment variables set:
+    - `NANOBOT_CONFIG` — path to the temp `config.json`
+    - `NANOBOT_SYSTEM_PROMPT` — the assembled system prompt string
+
+    If `-p` is provided, `--message <prompt>` is appended to run in one-shot mode. Without `-p`, Nanobot starts an interactive chat session.
+  </Step>
+  <Step title="Clean up">
+    The temp config directory is deleted after Nanobot exits, regardless of exit status.
+  </Step>
+</Steps>
+
+## Generated config.json
+
+The adapter generates a Nanobot config in this shape:
+
+```json config.json
+{
+  "providers": {
+    "anthropic": {
+      "apiKey": "${ANTHROPIC_API_KEY}"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "anthropic/claude-sonnet-4-5-20250929"
+    }
+  }
+}
+```
+
+The `providers` key is derived from the model prefix. For an OpenAI model the config would use an `openai` provider key instead.
+
+## Model mapping
+
+Nanobot uses vendor-prefixed model names:
+
+| agent.yaml model | Nanobot model |
+|-----------------|---------------|
+| `claude-opus-4-6` | `anthropic/claude-opus-4-6` |
+| `gpt-4.1` | `openai/gpt-4.1` |
+| `anthropic/claude-opus-4-6` | `anthropic/claude-opus-4-6` (unchanged) |
+| *(default)* | `anthropic/claude-sonnet-4-5-20250929` |
+
+## Auth auto-provisioning
+
+gitagent writes auth to `~/.nanobot/config.json` on first use:
+
+```json ~/.nanobot/config.json
+{
+  "providers": {
+    "anthropic": {
+      "apiKey": "<value of ANTHROPIC_API_KEY>"
+    }
+  }
+}
+```
+
+If the file already exists, it is left unchanged.
+
+## Interactive vs one-shot mode
+
+| Mode | When | Command spawned |
+|------|------|-----------------|
+| Interactive | No `-p` flag | `nanobot agent` |
+| One-shot | `-p "your prompt"` | `nanobot agent --message "your prompt"` |
+
+In interactive mode the terminal is inherited and you type messages directly. In one-shot mode Nanobot responds to the single prompt and exits.
+
+## Export format
+
+You can inspect both generated artifacts without running them:
+
+```bash
+# Print config.json and system prompt to stdout
+gitagent export -f nanobot -d ./my-agent
+```
+
+The output shows each section preceded by a `# === <name> ===` header.
+
+## Examples
+
+<CodeGroup>
+
+```bash interactive session
+export ANTHROPIC_API_KEY="sk-ant-..."
+gitagent run -d ./my-agent -a nanobot
+```
+
+```bash one-shot prompt
+export ANTHROPIC_API_KEY="sk-ant-..."
+gitagent run -d ./my-agent -a nanobot -p "Summarize the project"
+```
+
+```bash from git repo
+export ANTHROPIC_API_KEY="sk-ant-..."
+gitagent run -r https://github.com/user/my-agent -a nanobot -p "Hello"
+```
+
+```bash export config only
+gitagent export -f nanobot -d ./my-agent
+```
+
+</CodeGroup>

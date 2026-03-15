@@ -1,0 +1,123 @@
+---
+title: "GitHub Models adapter"
+description: "Stream responses from GitHub Models using your GitHub token — no separate API key required."
+---
+
+The `github` adapter resolves your agent's model to a GitHub Models namespace, sends a streaming chat completions request to the GitHub Models API, and writes response tokens to stdout as they arrive. It uses the same OpenAI-compatible API format that GitHub Models exposes.
+
+## Requirements
+
+- `GITHUB_TOKEN` or `GH_TOKEN` environment variable set, with the `models:read` scope
+- Generate a token at [github.com/settings/tokens](https://github.com/settings/tokens)
+- `-p` prompt flag (required — there is no interactive mode)
+
+## How it works
+
+<Steps>
+  <Step title="Verify credentials">
+    The runner checks for `GITHUB_TOKEN` or `GH_TOKEN`. If neither is set, the process exits with an error and prints a link to the token settings page.
+  </Step>
+  <Step title="Build the system prompt">
+    The system prompt is assembled from `SOUL.md`, `RULES.md`, skills, always-load knowledge documents, compliance constraints, and memory — the same output as `gitagent export -f system-prompt`.
+  </Step>
+  <Step title="Resolve the model">
+    The model from `agent.yaml` is mapped to a GitHub Models namespace. If no model is set, the default is `openai/gpt-4.1`.
+  </Step>
+  <Step title="Send the streaming request">
+    A `POST` request is sent to `https://models.github.ai/inference/chat/completions` with `stream: true`. The system prompt and user prompt are sent as the messages array.
+  </Step>
+  <Step title="Stream tokens to stdout">
+    The SSE response stream is read chunk by chunk. Each delta content fragment is written to `process.stdout` immediately as it arrives, giving a real-time streaming experience.
+  </Step>
+</Steps>
+
+## Model namespace mapping
+
+GitHub Models hosts models under vendor namespaces. The adapter maps bare model names automatically:
+
+| Model prefix | GitHub Models namespace | Example |
+|-------------|------------------------|----------|
+| `gpt-*`, `o1-*`, `o3-*`, `o4-*` | `openai/` | `openai/gpt-4.1` |
+| `claude-*` | `anthropic/` | `anthropic/claude-opus-4-6` |
+| `llama-*`, `Llama-*` | `meta/` | `meta/llama-4-scout` |
+| `mistral-*`, `Mistral-*` | `mistralai/` | `mistralai/mistral-large` |
+| `gemini-*` | `google/` | `google/gemini-2.0-flash` |
+| `deepseek-*`, `DeepSeek-*` | `deepseek/` | `deepseek/DeepSeek-R1` |
+| `cohere-*` | `cohere/` | `cohere/command-r` |
+| Already namespaced (contains `/`) | Unchanged | `openai/gpt-4.1` |
+| *(default — no model set)* | — | `openai/gpt-4.1` |
+
+## API endpoint
+
+```
+POST https://models.github.ai/inference/chat/completions
+Authorization: Bearer <GITHUB_TOKEN>
+Content-Type: application/json
+
+{
+  "model": "openai/gpt-4.1",
+  "messages": [
+    { "role": "system", "content": "<assembled system prompt>" },
+    { "role": "user",   "content": "<your prompt>" }
+  ],
+  "temperature": 0.3,
+  "max_tokens": 4096,
+  "stream": true
+}
+```
+
+The `temperature` and `max_tokens` values come from `model.constraints` in `agent.yaml`, defaulting to `0.3` and `4096` respectively.
+
+## Streaming behavior
+
+Responses are streamed using Server-Sent Events (SSE). Each `data:` line in the stream is parsed as JSON, and the `choices[0].delta.content` fragment is written directly to stdout. The stream ends when a `data: [DONE]` line is received.
+
+This means you see the response being written in real time, token by token — the same experience as typing in a chat interface.
+
+## Export format
+
+You can inspect the full API payload without sending it:
+
+```bash
+# Print JSON payload to stdout
+gitagent export -f github -d ./my-agent
+
+# Save to file
+gitagent export -f github -d ./my-agent -o payload.json
+```
+
+The exported payload always sets `"stream": true`.
+
+## Examples
+
+<CodeGroup>
+
+```bash basic run
+export GITHUB_TOKEN="ghp_..."
+gitagent run -d ./my-agent -a github -p "Review this code for security issues"
+```
+
+```bash from git repo
+export GITHUB_TOKEN="ghp_..."
+gitagent run -r https://github.com/user/my-agent -a github -p "Summarize this project"
+```
+
+```bash with a specific model
+# Set preferred model in agent.yaml, or use an already-namespaced name
+export GITHUB_TOKEN="ghp_..."
+gitagent run -d ./my-agent -a github -p "Hello"
+```
+
+```bash export payload
+gitagent export -f github -d ./my-agent
+```
+
+</CodeGroup>
+
+<Tip>
+GitHub Models is a great choice for quick experimentation — if you already have a GitHub account, you likely have a token available. Just add the `models:read` scope at [github.com/settings/tokens](https://github.com/settings/tokens).
+</Tip>
+
+<Warning>
+The `-p` prompt flag is required. If you omit it, the adapter exits immediately with an error. There is no interactive fallback.
+</Warning>

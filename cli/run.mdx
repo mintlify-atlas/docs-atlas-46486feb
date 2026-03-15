@@ -1,0 +1,152 @@
+---
+title: gitagent run
+description: Run an agent with a specific adapter — interactively or with a one-shot prompt.
+---
+
+`gitagent run` loads an agent from a local directory or git repository and launches it with the selected adapter. It handles git caching, manifest loading, and delegating to the appropriate runner.
+
+## Synopsis
+
+```bash
+gitagent run [options]
+```
+
+Either `--repo` or `--dir` is required.
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-r, --repo <url>` | — | Git repository URL to clone and run |
+| `-d, --dir <dir>` | — | Local directory (alternative to `--repo`) |
+| `-a, --adapter <name>` | `claude` | Adapter to use (see table below) |
+| `-b, --branch <branch>` | `main` | Git branch or tag to clone when using `--repo` |
+| `--refresh` | `false` | Force re-clone (pull latest into the cache) |
+| `--no-cache` | `false` | Clone to a temp directory and delete it on exit |
+| `-p, --prompt <query>` | — | Initial prompt to send (required by some adapters) |
+
+## Available adapters
+
+| Adapter | Mode | Requirements |
+|---------|------|--------------|
+| `claude` | Interactive or one-shot (with `-p`) | [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed globally |
+| `openai` | One-shot | `OPENAI_API_KEY`, Python 3, `openai-agents` package |
+| `crewai` | One-shot | `crewai` CLI (`pip install crewai`) |
+| `openclaw` | One-shot (`-p` required) | `ANTHROPIC_API_KEY`, OpenClaw CLI |
+| `nanobot` | Interactive or one-shot | `ANTHROPIC_API_KEY`, Nanobot CLI (`pip install nanobot-ai`) |
+| `lyzr` | One-shot (`-p` required) | `LYZR_API_KEY` |
+| `github` | One-shot (`-p` required) | `GITHUB_TOKEN` with `models:read` scope |
+| `git` | Auto-detect (requires `--repo`) | Depends on detected adapter |
+| `prompt` | Print system prompt only | None |
+
+### Adapter notes
+
+**claude** — Builds Claude Code CLI arguments from the manifest (model, max-turns, allowed tools, sub-agents, hooks) and spawns `claude` with stdio inherited for a fully interactive session.
+
+**openai** — Exports the agent as Python code using the OpenAI Agents SDK, writes it to a temp file, and runs it with `python3`.
+
+**crewai** — Exports a CrewAI YAML config and runs `crewai kickoff --config <tmpfile>`.
+
+**openclaw** — Auto-provisions `~/.openclaw/agents/main/agent/auth-profiles.json` from `ANTHROPIC_API_KEY`, creates a temporary workspace, and runs `openclaw agent --local --session-id <id> --message <prompt>`.
+
+**nanobot** — Auto-provisions `~/.nanobot/config.json`, creates a temp config directory, and runs `nanobot agent` (interactive) or `nanobot agent --message <prompt>` (one-shot).
+
+**lyzr** — Creates the agent on Lyzr Studio if no `.lyzr_agent_id` exists, saves the ID, then sends the prompt to the Lyzr inference API.
+
+**github** — Resolves the model name to a GitHub Models namespace, then streams a chat completions response to stdout.
+
+**git** — Clones the repo and auto-detects the best adapter from the agent contents (see [auto-detection priority](#git-adapter-auto-detection)), then delegates to that adapter.
+
+**prompt** — Prints the system prompt to stdout and exits. No runner is invoked.
+
+## git adapter auto-detection
+
+When you use `-a git`, the runner examines the cloned repository in this order:
+
+| Priority | Signal | Detected adapter |
+|----------|--------|------------------|
+| 1 | `.gitagent_adapter` file exists | Value in the file (e.g., `lyzr`, `github`) |
+| 2 | Model name starts with `claude` | `claude` |
+| 3 | Model name starts with `gpt`, `o1`, or `o3` | `openai` |
+| 4 | `CLAUDE.md` or `.claude/` directory exists | `claude` |
+| 5 | `.cursorrules` file exists | `openai` |
+| 6 | `crew.yaml` or `crewai.yaml` exists | `crewai` |
+| 7 | `.lyzr_agent_id` file exists | `lyzr` |
+| 8 | `.github_models` file exists | `github` |
+| 9 | *(fallback)* | `claude` |
+
+## Caching behavior
+
+When using `--repo`, gitagent caches the cloned repository under `~/.gitagent/cache/<hash>/`. The hash is the first 16 characters of the SHA-256 of `{url}#{branch}`.
+
+| Flag | Behavior |
+|------|---------|
+| *(default)* | Clone once; reuse from cache on subsequent runs |
+| `--refresh` | Pull the latest changes into the existing cache entry |
+| `--no-cache` | Clone to a temp directory; delete it when the process exits |
+
+## Examples
+
+<CodeGroup>
+
+```bash claude (default)
+# Interactive session with local agent
+gitagent run -d ./my-agent
+
+# One-shot with a prompt
+gitagent run -d ./my-agent -p "Review my authentication code"
+
+# From a git repo
+gitagent run -r https://github.com/user/my-agent
+```
+
+```bash openai
+export OPENAI_API_KEY="sk-..."
+gitagent run -d ./my-agent -a openai -p "Summarize this project"
+```
+
+```bash crewai
+gitagent run -d ./my-agent -a crewai
+```
+
+```bash openclaw
+export ANTHROPIC_API_KEY="sk-ant-..."
+gitagent run -d ./my-agent -a openclaw -p "Review this code"
+```
+
+```bash nanobot
+export ANTHROPIC_API_KEY="sk-ant-..."
+# Interactive
+gitagent run -d ./my-agent -a nanobot
+# One-shot
+gitagent run -d ./my-agent -a nanobot -p "Hello"
+```
+
+```bash lyzr
+export LYZR_API_KEY="lyzr-..."
+gitagent run -d ./my-agent -a lyzr -p "Hello"
+```
+
+```bash github
+export GITHUB_TOKEN="ghp_..."
+gitagent run -d ./my-agent -a github -p "Review my code"
+```
+
+```bash git (auto-detect)
+# Auto-detect adapter from repo contents
+gitagent run -a git -r https://github.com/user/my-agent -p "Hello"
+
+# Force a specific branch and refresh cache
+gitagent run -a git -r https://github.com/user/my-agent -b develop --refresh -p "Hello"
+```
+
+```bash prompt
+# Print the system prompt without running any adapter
+gitagent run -d ./my-agent -a prompt
+```
+
+</CodeGroup>
+
+<Warning>
+The `openclaw`, `lyzr`, and `github` adapters all require `-p` (prompt). Omitting it will cause an error at runtime.
+</Warning>

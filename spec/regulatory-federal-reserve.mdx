@@ -1,0 +1,172 @@
+---
+title: "Federal Reserve regulatory reference"
+description: "SR 11-7, SR 23-4, SR 21-8, and CFPB Circular 2022-03 — how each applies to AI agents and the corresponding gitagent field mappings."
+---
+
+This page is the normative regulatory reference for Federal Reserve and interagency guidance as it applies to gitagent. For configuration how-to guidance, see [Federal Reserve compliance](/compliance/federal-reserve) in the Documentation tab.
+
+## Federal Reserve supervisory letters
+
+### SR 11-7 — Model risk management
+
+| Field | Value |
+|-------|-------|
+| **Document** | SR 11-7 (Supervisory Guidance on Model Risk Management) |
+| **Issued by** | Federal Reserve Board / OCC |
+| **Subject** | Model Risk Management |
+| **gitagent impact** | `compliance.model_risk` |
+
+SR 11-7 establishes the model risk management framework for bank-supervised models. AI agents used in banking contexts are subject to SR 11-7 model validation requirements.
+
+When `federal_reserve` is in `frameworks`, `gitagent validate --compliance` enforces:
+- `model_risk` section must be present
+- `model_risk.ongoing_monitoring` must be `true`
+
+Full configuration:
+
+```yaml
+compliance:
+  frameworks:
+    - federal_reserve
+  model_risk:
+    inventory_id: MRM-2024-0047      # ID in firm's model inventory
+    validation_cadence: quarterly    # quarterly or more frequent for high/critical
+    validation_type: full            # full | targeted | change_based
+    conceptual_soundness: compliance/risk-assessment.md
+    ongoing_monitoring: true         # required when federal_reserve in frameworks
+    outcomes_analysis: true          # back-testing against actual results
+    drift_detection: true            # monitor for model degradation
+    parallel_testing: false          # run alongside existing system
+```
+
+SR 11-7 defines three pillars of model validation:
+
+| Pillar | Description | `validation_type` |
+|--------|-------------|-------------------|
+| Conceptual soundness | Theory and methodology are appropriate | `full` |
+| Ongoing monitoring | Performance tracked over time | `full` |
+| Outcomes analysis | Outputs compared to actual results | `full` |
+
+Use `validation_type: full` for the complete three-pillar validation. Use `targeted` or `change_based` for scoped or change-triggered validations.
+
+The `compliance/validation-schedule.yaml` file should document SR 11-7 elements:
+
+```yaml
+schedule:
+  - type: full_validation
+    cadence: annual
+    owner: model-risk-team
+    sr_11_7_elements:
+      - conceptual_soundness
+      - ongoing_monitoring
+      - outcomes_analysis
+```
+
+### SR 23-4 — Third-party risk management
+
+| Field | Value |
+|-------|-------|
+| **Document** | SR 23-4 (Interagency Guidance on Third-Party Relationships) |
+| **Issued by** | Federal Reserve Board, OCC, FDIC |
+| **Subject** | Third-Party Risk Management |
+| **gitagent impact** | `dependencies[].vendor_management` |
+
+SR 23-4 requires rigorous due diligence and ongoing monitoring of third-party relationships. For AI agents that depend on external agent definitions or model providers:
+
+```yaml
+# In agent.yaml compliance section
+compliance:
+  vendor_management:
+    due_diligence_complete: true
+    soc_report_required: true
+    vendor_ai_notification: true    # vendor must notify of AI/model changes
+    subcontractor_assessment: true  # fourth-party risk assessed
+
+# Per-dependency vendor management
+dependencies:
+  - name: external-analyst
+    source: https://github.com/org/analyst-agent.git
+    version: ^2.0.0
+    vendor_management:
+      due_diligence_date: 2026-01-15
+      soc_report: true
+      risk_assessment: low
+```
+
+`compliance.vendor_management` covers the overall vendor management policy. `dependencies[].vendor_management` captures due diligence records for each specific external agent dependency.
+
+### SR 21-8 — BSA/AML model risk
+
+| Field | Value |
+|-------|-------|
+| **Document** | SR 21-8 (Supervisory Guidance on BSA/AML Model Risks) |
+| **Issued by** | Federal Reserve Board |
+| **Subject** | BSA/AML Model Risk Management |
+| **gitagent impact** | `compliance.model_risk` for AML agents |
+
+SR 21-8 applies SR 11-7 model risk principles specifically to Bank Secrecy Act and anti-money laundering models. For agents involved in AML screening, transaction monitoring, or suspicious activity detection:
+
+```yaml
+compliance:
+  frameworks:
+    - federal_reserve
+    - bsa_aml
+  risk_tier: high
+  model_risk:
+    inventory_id: AML-MRM-2024-0012
+    validation_cadence: quarterly
+    validation_type: full
+    ongoing_monitoring: true
+    outcomes_analysis: true
+    drift_detection: true
+```
+
+Include `bsa_aml` alongside `federal_reserve` in `frameworks` to indicate the agent is subject to BSA/AML requirements. Add the agent to your firm's AML model inventory.
+
+## CFPB guidance
+
+### CFPB Circular 2022-03 — Adverse action and AI
+
+| Field | Value |
+|-------|-------|
+| **Document** | CFPB Circular 2022-03 |
+| **Issued by** | Consumer Financial Protection Bureau |
+| **Subject** | Adverse Action Notification Requirements and Complex Algorithms |
+| **gitagent impact** | `compliance.data_governance.lda_search` |
+
+CFPB Circular 2022-03 clarified that lenders using complex algorithms (including AI/ML models) for credit decisions must still provide specific, accurate adverse action reasons. The "complexity" of the model is not a defense for failing to provide specific reasons.
+
+Critically, the circular addressed Less Discriminatory Alternative (LDA) search — lenders should search for alternative models that achieve the same business purpose with less discriminatory impact.
+
+```yaml
+compliance:
+  frameworks:
+    - cfpb
+  data_governance:
+    pii_handling: redact
+    data_classification: restricted
+    bias_testing: true     # regular bias testing required
+    lda_search: true       # Less Discriminatory Alternative search
+    consent_required: true
+    cross_border: false
+```
+
+When `lda_search: true`, the `compliance/validation-schedule.yaml` should include a quarterly bias testing entry:
+
+```yaml
+schedule:
+  - type: bias_testing
+    cadence: quarterly
+    owner: fair-lending-team
+```
+
+For the `RULES.md` entry that corresponds to this guidance, see the [Fair lending section](/spec/rules-md#fair-lending-ecoareg-b) of the RULES.md spec.
+
+## Full Federal Reserve / interagency mapping
+
+| Document | Issued by | Subject | `agent.yaml` field |
+|----------|-----------|---------|-------------------|
+| SR 11-7 | Fed / OCC | Model Risk Management | `compliance.model_risk` |
+| SR 23-4 | Fed / OCC / FDIC | Third-Party Risk Management | `dependencies[].vendor_management` |
+| SR 21-8 | Federal Reserve | BSA/AML Model Risk | `compliance.model_risk` (AML agents) |
+| CFPB Circular 2022-03 | CFPB | Adverse Action + AI | `compliance.data_governance.lda_search` |

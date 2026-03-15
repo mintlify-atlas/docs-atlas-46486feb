@@ -1,0 +1,253 @@
+---
+title: "Lyzr agent example"
+description: "A research assistant built for Lyzr Studio, demonstrating the .gitagent_adapter hint and the lyzr command workflow."
+---
+
+The Lyzr agent example is a research assistant designed to run on [Lyzr Studio](https://studio.lyzr.ai). It demonstrates the `.gitagent_adapter` hint mechanism, the GPT-4.1 model configuration, and the end-to-end `gitagent lyzr` workflow: create, update, and chat.
+
+## Directory structure
+
+```text
+examples/lyzr-agent/
+├── agent.yaml
+├── SOUL.md
+├── RULES.md
+├── PROMPT.md
+├── .gitagent_adapter
+├── README.md
+└── skills/
+    └── research/
+        └── SKILL.md
+```
+
+## File contents
+
+### agent.yaml
+
+The manifest configures GPT-4.1 as the preferred model. Lyzr Studio uses OpenAI's API, so the model maps directly to the `lyzr_openai` credential. The `research` skill is listed under `skills:`.
+
+```yaml agent.yaml
+spec_version: "0.1.0"
+name: lyzr-research-agent
+version: 1.0.0
+description: AI research assistant that summarizes topics, answers questions, and drafts reports — powered by Lyzr
+author: gitagent-examples
+license: MIT
+model:
+  preferred: gpt-4.1
+  fallback:
+    - gpt-4.1-mini
+  constraints:
+    temperature: 0.3
+    max_tokens: 4096
+    top_p: 0.9
+skills:
+  - research
+runtime:
+  max_turns: 10
+  timeout: 180
+tags:
+  - lyzr
+  - research
+  - assistant
+```
+
+### SOUL.md
+
+The identity file establishes the agent as a research assistant: clear, evidence-based, and transparent about uncertainty.
+
+```markdown SOUL.md
+# Soul
+
+## Core Identity
+I am a research assistant. I help users explore topics, summarize information,
+answer questions with cited reasoning, and draft structured reports.
+
+## Communication Style
+Clear, well-organized, and evidence-based. I present findings in a structured
+format with headings and bullet points. I distinguish between established facts
+and my own analysis.
+
+## Values & Principles
+- Accuracy first — never fabricate information
+- Clarity over complexity — explain concepts simply
+- Balanced perspective — present multiple viewpoints when relevant
+- Transparency — state when I'm uncertain or speculating
+
+## Domain Expertise
+- General knowledge research and synthesis
+- Technical topic summarization
+- Comparative analysis
+- Report and brief drafting
+
+## Collaboration Style
+I ask clarifying questions when a topic is broad. I break complex topics into
+digestible sections and offer to go deeper on any subtopic.
+```
+
+### .gitagent_adapter
+
+This single-line file tells the git runner to use the Lyzr adapter instead of auto-detecting:
+
+```text .gitagent_adapter
+lyzr
+```
+
+When you run `gitagent run -a git -r <repo-url>`, the git runner reads `.gitagent_adapter` first (highest priority in the auto-detection chain) and immediately delegates to the Lyzr runner — no model name inference or file-pattern matching required.
+
+<Tip>
+  Use `.gitagent_adapter` any time you want a specific adapter to be selected automatically when someone clones and runs your agent repo. Valid values are `lyzr`, `github`, `claude`, `openai`, `crewai`, `openclaw`, and `nanobot`.
+</Tip>
+
+### skills/research/SKILL.md
+
+The `research` skill provides a 5-step research methodology and a structured output template.
+
+```markdown skills/research/SKILL.md
+---
+name: research
+description: Research a topic and produce a structured summary with key findings
+license: MIT
+metadata:
+  author: gitagent-examples
+  version: "1.0.0"
+  category: research
+---
+
+# Research
+
+## Instructions
+When researching a topic:
+1. Identify the core question or area of interest
+2. Break it into 3-5 key subtopics
+3. For each subtopic, provide factual information with reasoning
+4. Note areas of uncertainty or debate
+5. Synthesize findings into a coherent summary
+
+## Output Format
+\`\`\`
+## TL;DR
+[Brief summary]
+
+## Research Findings
+
+### [Subtopic]
+- [Key point with supporting reasoning]
+
+## Open Questions
+- [Areas that need further investigation]
+
+## Suggested Follow-ups
+- [Related questions the user might want to explore]
+\`\`\`
+```
+
+## Running the example
+
+You need a Lyzr API key. Get one from [Lyzr Studio](https://studio.lyzr.ai), then set it as an environment variable:
+
+```bash
+export LYZR_API_KEY="your-key-here"
+```
+
+<Steps>
+  <Step title="Create the agent on Lyzr Studio">
+    This exports the gitagent definition to the Lyzr API payload and creates a new agent on Lyzr Studio. The returned agent ID is saved to `.lyzr_agent_id` for reuse.
+
+    ```bash
+    gitagent lyzr create -d ./examples/lyzr-agent
+    ```
+
+    gitagent assembles the payload from `agent.yaml`, `SOUL.md`, `RULES.md`, and the `research` skill, maps GPT-4.1 to the `lyzr_openai` credential, and calls:
+
+    ```text
+    POST https://agent-prod.studio.lyzr.ai/v3/agents/template/single-task
+    ```
+  </Step>
+
+  <Step title="Chat with the agent">
+    Send a prompt to the agent on Lyzr Studio:
+
+    ```bash
+    gitagent lyzr run -d ./examples/lyzr-agent -p "Summarize the latest trends in AI agents"
+    ```
+
+    gitagent reads `.lyzr_agent_id`, sends your prompt to the Lyzr inference API, and streams the response to your terminal.
+  </Step>
+
+  <Step title="Push local changes">
+    After editing any of the agent files, push the updated definition to Lyzr:
+
+    ```bash
+    gitagent lyzr update -d ./examples/lyzr-agent
+    ```
+  </Step>
+
+  <Step title="Inspect the linked agent ID">
+    ```bash
+    gitagent lyzr info -d ./examples/lyzr-agent
+    ```
+  </Step>
+</Steps>
+
+## Full one-liner commands
+
+You can clone, create, and chat in a single command — no local setup required beyond the API key:
+
+<CodeGroup>
+
+```bash From a git repo
+gitagent lyzr run \
+  -r https://github.com/open-gitagent/gitagent \
+  -p "What are AI agents?"
+```
+
+```bash From a local directory
+gitagent lyzr run \
+  -d ./examples/lyzr-agent \
+  -p "What is RAG?"
+```
+
+```bash Via the run command with the lyzr adapter
+gitagent run \
+  -r https://github.com/open-gitagent/gitagent \
+  -a lyzr \
+  -p "Explain transformer architecture"
+```
+
+```bash Via git auto-detect (reads .gitagent_adapter)
+gitagent run \
+  -r https://github.com/open-gitagent/gitagent \
+  -a git \
+  -p "Explain transformer architecture"
+```
+
+</CodeGroup>
+
+If no `.lyzr_agent_id` exists, the `lyzr run` command creates the agent first. Subsequent runs reuse the saved ID.
+
+## How the Lyzr export works
+
+When you run `gitagent lyzr create` or `gitagent export --format lyzr`, gitagent builds the following API payload:
+
+| Field | Source |
+|---|---|
+| `name` | `agent.yaml` → `name` |
+| `description` | `agent.yaml` → `description` |
+| `agent_role` | `SOUL.md` → "Core Identity" section |
+| `agent_goal` | `SOUL.md` → "Values & Principles" section |
+| `agent_instructions` | Full system prompt (SOUL + RULES + skills) |
+| `provider_id` | Mapped from model name (`gpt-4.1` → `OpenAI`) |
+| `model` | `agent.yaml` → `model.preferred` |
+| `temperature` | `agent.yaml` → `model.constraints.temperature` |
+| `llm_credential_id` | `gpt-4.1` → `lyzr_openai` |
+
+Preview the payload without creating the agent:
+
+```bash
+gitagent export --format lyzr -d ./examples/lyzr-agent
+```
+
+<Card title="Lyzr adapter reference" icon="bolt" href="/adapters/lyzr">
+  Full documentation on the Lyzr runner, API endpoints, model-to-provider mapping, and authentication.
+</Card>

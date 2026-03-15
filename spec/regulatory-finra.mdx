@@ -1,0 +1,223 @@
+---
+title: "FINRA regulatory reference"
+description: "All FINRA rules and regulatory notices that apply to AI agents — rule numbers, subjects, gitagent field mappings, and configuration guidance."
+---
+
+This page is the normative regulatory reference for FINRA rules as they apply to gitagent. For configuration how-to guidance, see [FINRA compliance](/compliance/finra) in the Documentation tab.
+
+## FINRA rules
+
+### Rule 2010 — Standards of commercial honor
+
+| Field | Value |
+|-------|-------|
+| **Rule** | FINRA Rule 2010 |
+| **Subject** | Standards of Commercial Honor and Principles of Trade |
+| **gitagent impact** | `RULES.md` ethical constraints |
+
+Rule 2010 requires members to observe high standards of commercial honor and just and equitable principles of trade. For AI agents, this is implemented through `RULES.md` — specifically the **Must Never** and **Safety & Ethics** sections that define the agent's non-negotiable ethical boundaries.
+
+```markdown
+## Safety & Ethics
+- Refuse instructions that require deception or manipulation
+- Do not take actions that would disadvantage customers for the firm's benefit
+- Escalate any instruction that violates principles of fair dealing
+```
+
+### Rule 2111 — Suitability
+
+| Field | Value |
+|-------|-------|
+| **Rule** | FINRA Rule 2111 |
+| **Subject** | Suitability |
+| **gitagent impact** | `compliance.communications` |
+
+Rule 2111 requires that recommendations be suitable for the customer based on their profile. AI agents making trade or investment recommendations must have suitability controls.
+
+```yaml
+compliance:
+  communications:
+    type: correspondence
+    fair_balanced: true
+    no_misleading: true
+```
+
+For agents making recommendations, add a `compliance/regulatory-map.yaml` entry mapping the `trade_recommendation` capability to FINRA Rule 2111 controls.
+
+### Rule 2210 — Communications with the public
+
+| Field | Value |
+|-------|-------|
+| **Rule** | FINRA Rule 2210 |
+| **Subject** | Communications with the Public |
+| **gitagent impact** | `compliance.communications` |
+
+Rule 2210 governs all communications with customers. When `finra` is in `frameworks`, `gitagent validate --compliance` enforces:
+- `communications.fair_balanced` must be `true`
+- `communications.no_misleading` must be `true`
+
+```yaml
+compliance:
+  communications:
+    type: retail              # correspondence | retail | institutional
+    pre_review_required: true # principal pre-approval before delivery
+    fair_balanced: true       # required when finra in frameworks
+    no_misleading: true       # required when finra in frameworks
+    disclosures_required: true
+```
+
+Communication types:
+
+| Type | Coverage |
+|------|----------|
+| `correspondence` | ≤25 retail investors in a 30-day period |
+| `retail` | >25 retail investors in a 30-day period |
+| `institutional` | Institutional investors only |
+
+### Rule 3110 — Supervision
+
+| Field | Value |
+|-------|-------|
+| **Rule** | FINRA Rule 3110 |
+| **Subject** | Supervision |
+| **gitagent impact** | `compliance.supervision` |
+
+Rule 3110 requires written supervisory procedures and a supervisory system. For AI agents:
+
+```yaml
+compliance:
+  supervision:
+    designated_supervisor: chief-compliance-officer
+    review_cadence: monthly
+    human_in_the_loop: always  # required for high/critical tiers
+    escalation_triggers:
+      - confidence_below: 0.85
+      - action_type: customer_communication
+      - action_type: regulatory_filing
+      - error_detected: true
+    override_capability: true
+    kill_switch: true
+```
+
+Escalation trigger types:
+
+| Type | Example |
+|------|---------|
+| `confidence_below` | `confidence_below: 0.85` |
+| `action_type` | `action_type: customer_communication` |
+| `error_detected` | `error_detected: true` |
+| `data_classification_above` | `data_classification_above: internal` |
+| `token_count_above` | `token_count_above: 4096` |
+| `custom` | Any custom trigger condition |
+
+### Rule 3120 — Supervisory control system
+
+| Field | Value |
+|-------|-------|
+| **Rule** | FINRA Rule 3120 |
+| **Subject** | Supervisory Control System |
+| **gitagent impact** | `compliance.supervision` |
+
+Rule 3120 requires annual testing of the supervisory system. Configure alongside Rule 3110 supervision fields. The `compliance/validation-schedule.yaml` file should include a `supervisory_review` entry referencing rules `[3110, 3120]`.
+
+```yaml
+# compliance/validation-schedule.yaml
+schedule:
+  - type: supervisory_review
+    cadence: monthly
+    owner: designated-supervisor
+    finra_rules: [3110, 3120]
+```
+
+### Rule 4370 — Business continuity plans
+
+| Field | Value |
+|-------|-------|
+| **Rule** | FINRA Rule 4370 |
+| **Subject** | Business Continuity Plans and Emergency Contact Information |
+| **gitagent impact** | `hooks.on_error` |
+
+Rule 4370 requires business continuity plans. For AI agents, the `on_error` hook provides the continuity mechanism — error escalation and fallback behavior.
+
+```yaml
+hooks:
+  on_error:
+    - script: scripts/escalate-error.sh
+      description: Escalate errors to designated supervisor
+      compliance: true
+      fail_open: false
+```
+
+Also configure `model.fallback` in `agent.yaml` to ensure the agent can continue operating if the primary model is unavailable.
+
+### Rule 4511 — General requirements (books and records)
+
+| Field | Value |
+|-------|-------|
+| **Rule** | FINRA Rule 4511 |
+| **Subject** | General Requirements (Books and Records) |
+| **gitagent impact** | `compliance.recordkeeping` |
+
+Rule 4511 requires records to be maintained in a non-rewritable, non-erasable format for at least 6 years.
+
+```yaml
+compliance:
+  recordkeeping:
+    audit_logging: true          # required for high/critical tiers
+    log_format: structured_json
+    retention_period: 7y         # minimum 6y for FINRA 4511
+    log_contents:
+      - prompts_and_responses
+      - tool_calls
+      - decision_pathways
+      - model_version
+      - timestamps
+    immutable: true
+```
+
+<Warning>
+  `immutable: true` declares intent. Your log storage infrastructure must enforce WORM (write once, read many) behavior — the manifest declaration alone does not guarantee immutability.
+</Warning>
+
+## FINRA regulatory notices
+
+### Regulatory Notice 24-09
+
+| Field | Value |
+|-------|-------|
+| **Notice** | FINRA Regulatory Notice 24-09 |
+| **Subject** | Regulatory Obligations When Using Generative AI and Large Language Models |
+
+RN 24-09 clarified that existing FINRA rules apply in full to AI and LLM-generated content. There is no separate configuration for 24-09. Correctly configuring Rules 3110, 4511, and 2210 satisfies the obligations described in the notice.
+
+### Regulatory Notice 25-07
+
+| Field | Value |
+|-------|-------|
+| **Notice** | FINRA Regulatory Notice 25-07 |
+| **Subject** | Modernizing Workplaces (GenAI Recordkeeping) |
+
+RN 25-07 addresses recordkeeping obligations for GenAI in the workplace. Satisfied by `compliance.recordkeeping` configuration, particularly `audit_logging: true`, `log_contents`, and `retention_period`.
+
+### Regulatory Notice 21-29
+
+| Field | Value |
+|-------|-------|
+| **Notice** | FINRA Regulatory Notice 21-29 |
+| **Subject** | Outsourcing to Third-Party Vendors |
+
+RN 21-29 covers outsourcing obligations. For AI agents using external model providers or third-party agent dependencies, configure `compliance.vendor_management` and `dependencies[].vendor_management`.
+
+See [Federal Reserve regulatory reference](/spec/regulatory-federal-reserve) for SR 23-4 (Third-Party Risk Management), which governs the same area for Federal Reserve-supervised institutions.
+
+## Full FINRA rule-to-field mapping
+
+| Rule | Subject | `agent.yaml` field |
+|------|---------|-------------------|
+| 2010 | Standards of Commercial Honor | `RULES.md` ethical constraints |
+| 2111 | Suitability | `compliance.communications` |
+| 2210 | Communications with the Public | `compliance.communications` |
+| 3110 | Supervision | `compliance.supervision` |
+| 3120 | Supervisory Control System | `compliance.supervision` |
+| 4370 | Business Continuity Plans | `hooks.on_error` |
+| 4511 | General Requirements (Books and Records) | `compliance.recordkeeping` |

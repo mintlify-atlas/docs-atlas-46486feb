@@ -1,0 +1,112 @@
+---
+title: "Validation rules"
+description: "All normative validation rules for gitagent spec v0.1.0 — required files, compliance tier requirements, FINRA checks, Federal Reserve checks, and SOD validation."
+---
+
+The following rules define what constitutes a valid gitagent repository. Run `gitagent validate` to check all rules. Run `gitagent validate --compliance` to also run regulatory checks.
+
+## Core validation rules
+
+### Rule 1 — agent.yaml required fields
+
+`agent.yaml` must exist and contain all three required fields:
+
+- `name` — must match `^[a-z][a-z0-9-]*$`
+- `version` — must be a valid semantic version
+- `description` — must be a non-empty string
+
+### Rule 2 — SOUL.md non-empty
+
+`SOUL.md` must exist and contain at least one non-empty paragraph.
+
+### Rule 3 — Compliance section requirements
+
+If the `compliance` section exists in `agent.yaml`:
+
+- `risk_tier` must be specified (`low`, `standard`, `high`, or `critical`)
+
+**If `risk_tier` is `high` or `critical`:**
+- `supervision.human_in_the_loop` must be `always` or `conditional`
+- `recordkeeping.audit_logging` must be `true`
+- `model_risk.validation_cadence` must be `quarterly` or more frequent (`monthly`)
+
+**If `frameworks` includes `finra`:**
+- `communications.fair_balanced` must be `true`
+- `communications.no_misleading` must be `true`
+
+**If `frameworks` includes `federal_reserve`:**
+- `model_risk` section must be present
+- `model_risk.ongoing_monitoring` must be `true`
+
+### Rule 4 — Skill existence
+
+All skill names listed in the `skills` array must exist as directories in `skills/`.
+
+### Rule 5 — Tool existence
+
+All tool names listed in the `tools` array must exist as files in `tools/` (with any extension).
+
+### Rule 6 — Sub-agent existence
+
+All agents listed in the `agents` section must exist in the `agents/` directory (as a directory or `.md` file).
+
+### Rule 7 — Hook script existence
+
+All scripts referenced in `hooks/hooks.yaml` must exist at the specified paths relative to `hooks/`.
+
+## Segregation of duties validation
+
+If `compliance.segregation_of_duties` is present, the following rules apply:
+
+### SOD Rule 1 — Minimum roles
+
+`roles` must define at least 2 roles with unique IDs.
+
+### SOD Rule 2 — Conflict pairs
+
+All role IDs in `conflicts` pairs must reference role IDs defined in `roles`.
+
+### SOD Rule 3 — Assignment validity
+
+All role IDs in `assignments` must reference role IDs defined in `roles`.
+
+### SOD Rule 4 — No conflict violations
+
+No agent in `assignments` may hold two roles that appear together as a pair in `conflicts`.
+
+Example: if `conflicts` contains `[maker, checker]`, no single agent may be assigned both `maker` and `checker`.
+
+### SOD Rule 5 — Handoff roles
+
+`handoffs[].required_roles` must:
+- Reference role IDs defined in `roles`
+- Include at least 2 roles
+
+### SOD Rule 6 — Assigned agents should exist
+
+Agents named in `assignments` should exist in the `agents` section. This is a warning, not a hard error, to allow for agents defined outside the gitagent directory.
+
+## Summary table
+
+| # | Rule | Severity | Scope |
+|---|------|----------|-------|
+| 1 | `agent.yaml` with `name`, `version`, `description` | Error | Always |
+| 2 | `SOUL.md` non-empty | Error | Always |
+| 3a | `risk_tier` required in compliance section | Error | If `compliance` present |
+| 3b | `human_in_the_loop` must be `always`/`conditional` | Error | If `high`/`critical` tier |
+| 3c | `audit_logging` must be `true` | Error | If `high`/`critical` tier |
+| 3d | `validation_cadence` must be `quarterly` or `monthly` | Error | If `high`/`critical` tier |
+| 3e | `communications.fair_balanced` must be `true` | Error | If `finra` in frameworks |
+| 3f | `communications.no_misleading` must be `true` | Error | If `finra` in frameworks |
+| 3g | `model_risk` section must be present | Error | If `federal_reserve` in frameworks |
+| 3h | `model_risk.ongoing_monitoring` must be `true` | Error | If `federal_reserve` in frameworks |
+| 4 | All referenced skills must exist | Error | If `skills` array non-empty |
+| 5 | All referenced tools must exist | Error | If `tools` array non-empty |
+| 6 | All referenced sub-agents must exist | Error | If `agents` section non-empty |
+| 7 | All hook scripts must exist | Error | If `hooks.yaml` present |
+| SOD 1 | Minimum 2 roles | Error | If `segregation_of_duties` present |
+| SOD 2 | Conflict pairs reference defined roles | Error | If `conflicts` present |
+| SOD 3 | Assignment values reference defined roles | Error | If `assignments` present |
+| SOD 4 | No agent holds conflicting role pair | Error | If both `conflicts` and `assignments` present |
+| SOD 5 | Handoffs reference valid roles, minimum 2 | Error | If `handoffs` present |
+| SOD 6 | Assigned agents should exist in `agents` section | Warning | If `assignments` present |

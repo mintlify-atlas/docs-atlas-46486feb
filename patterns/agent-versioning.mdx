@@ -1,0 +1,201 @@
+---
+title: "Agent versioning"
+description: "Every change to your agent is a git commit. Roll back broken prompts, revert bad skills, explore past versions — full undo history built in."
+---
+
+Because a GitAgent agent is a directory of plain text files in a git repository, every change you make — a rewritten `SOUL.md`, a new skill, a tightened rule — is automatically a versioned commit. You get the full power of git's history, branching, and diffing for free.
+
+## The version field
+
+The `version` field in `agent.yaml` is a semantic version string that you control. It records the current stable state of the agent definition:
+
+```yaml
+spec_version: "0.1.0"
+name: compliance-analyst
+version: 1.2.0
+description: Financial compliance analysis agent
+```
+
+Version follows [Semantic Versioning](https://semver.org):
+
+| Part | When to increment |
+|---|---|
+| **Major** (`1.x.x`) | Breaking change to the agent's behavior, interface, or compliance configuration |
+| **Minor** (`x.1.x`) | New skill, new tool, expanded capabilities — backward compatible |
+| **Patch** (`x.x.1`) | Bug fix, wording tweak, minor rule adjustment |
+
+Update `version` in `agent.yaml` when you tag a release. Between releases, git commit hashes serve as the precise identifier.
+
+## Using git to manage agent history
+
+Because agent files are plain text, all standard git commands work exactly as you would expect.
+
+### View history
+
+```bash
+# See all commits to the agent
+git log --oneline
+
+# See history of a specific file
+git log --oneline -- SOUL.md
+git log --oneline -- skills/fraud-detection/SKILL.md
+```
+
+### Inspect changes between versions
+
+```bash
+# Diff the current agent against a previous commit
+git diff HEAD~3 -- agent.yaml
+
+# Diff two tagged versions
+git diff v1.0.0..v1.2.0
+
+# Diff just the SOUL.md between two versions
+git diff v1.0.0..v1.2.0 -- SOUL.md
+
+# See what changed in a specific commit
+git show abc1234
+```
+
+### Trace who changed what
+
+```bash
+# Find who last changed every line in SOUL.md
+git blame SOUL.md
+
+# Find who changed a specific rule in RULES.md
+git blame RULES.md
+```
+
+`git blame` gives you the author and timestamp for every line — useful for compliance audits and debugging unexpected behavior.
+
+## Reverting bad changes
+
+If an agent starts behaving incorrectly after a change — a skill that produces poor outputs, a rule that is too restrictive — you can revert:
+
+```bash
+# Revert the most recent commit (creates a new revert commit)
+git revert HEAD
+
+# Revert a specific commit by hash
+git revert abc1234
+
+# Restore a single file to its state at a previous commit
+git checkout v1.1.0 -- SOUL.md
+git checkout v1.1.0 -- skills/fraud-detection/SKILL.md
+```
+
+<Tip>
+Prefer `git revert` over `git reset --hard` for production agents. `revert` adds a new commit that undoes the change, preserving the full audit trail. `reset --hard` rewrites history and loses the record of what was changed.
+</Tip>
+
+### Example: reverting a bad SOUL.md
+
+You updated `SOUL.md` to make the agent more assertive, but it is now producing overconfident outputs. Revert to the previous version:
+
+```bash
+# Find the commit before the SOUL.md change
+git log --oneline -- SOUL.md
+# abc1234 Update SOUL.md — more assertive tone
+# def5678 Initial SOUL.md
+
+# Restore the previous SOUL.md
+git checkout def5678 -- SOUL.md
+git commit -m "Revert SOUL.md tone change — caused overconfident outputs"
+
+# Update the version to signal the fix
+# Edit agent.yaml: version 1.2.1
+git add agent.yaml
+git commit -m "Bump version to 1.2.1 after SOUL.md revert"
+```
+
+### Example: diffing two skills
+
+```bash
+# See what changed in the fraud-detection skill between v1.1.0 and v1.2.0
+git diff v1.1.0..v1.2.0 -- skills/fraud-detection/SKILL.md
+```
+
+Output shows exactly which instructions changed, line by line — the same diff view you see in GitHub pull requests.
+
+## Git tags for stable releases
+
+Tag stable versions so you can pin deployments to a known-good state:
+
+```bash
+# Tag the current commit as v1.0.0
+git tag -a v1.0.0 -m "First stable release"
+
+# Push the tag to the remote
+git push origin v1.0.0
+
+# List all tags
+git tag
+
+# Run the agent at a specific tagged version
+gitagent run -r https://github.com/org/my-agent -b v1.0.0 -a claude -p "Hello"
+```
+
+Tagged versions are immutable reference points. You can always deploy `v1.0.0` with confidence that you are running exactly the same agent definition that was reviewed and approved.
+
+## Branch-based experimentation
+
+Use branches to experiment with agent changes before promoting them to production:
+
+```bash
+# Create a branch to test a new skill
+git checkout -b feature/add-sentiment-analysis
+# ... edit skills/sentiment-analysis/SKILL.md ...
+gitagent validate
+git commit -m "Add sentiment-analysis skill"
+
+# Test on staging before merging
+gitagent run -d . -a claude -p "Test the new skill"
+
+# Merge to main when ready
+git checkout main
+git merge feature/add-sentiment-analysis
+git tag -a v1.3.0 -m "Add sentiment-analysis skill"
+```
+
+See [Branch-based deployment](/patterns/branch-deployment) for a full `dev → staging → main` promotion workflow.
+
+## Validating each version
+
+Run `gitagent validate` before committing each change to catch schema errors and broken references early:
+
+```bash
+# Validate the current state
+gitagent validate
+
+# Validate with compliance checks
+gitagent validate --compliance
+
+# Validate a specific directory
+gitagent validate -d ./my-agent --compliance
+```
+
+Add validation as a git pre-commit hook or CI check so that invalid agent definitions can never reach `main`. See [CI/CD for agents](/patterns/cicd) for a full GitHub Actions example.
+
+## Summary
+
+<CardGroup cols={2}>
+  <Card title="git log" icon="clock-rotate-left">
+    Full history of every agent change — who changed what, when, and why
+  </Card>
+  <Card title="git diff" icon="code-compare">
+    Readable line-by-line diff between any two agent versions
+  </Card>
+  <Card title="git blame" icon="user-check">
+    Trace every line of every file to its author and commit
+  </Card>
+  <Card title="git revert" icon="rotate-left">
+    Safely undo any change while preserving the full audit trail
+  </Card>
+  <Card title="git tag" icon="tag">
+    Pin stable releases so deployments always use a known-good version
+  </Card>
+  <Card title="gitagent validate" icon="circle-check">
+    Catch schema errors and compliance violations before they reach production
+  </Card>
+</CardGroup>

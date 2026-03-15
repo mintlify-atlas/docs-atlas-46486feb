@@ -1,0 +1,126 @@
+---
+title: "Directory structure"
+description: "Complete reference of every file and directory in a GitAgent repository, with requirement levels and descriptions."
+---
+
+A GitAgent repository can contain as few as two files or as many directories as your agent needs. Only `agent.yaml` and `SOUL.md` are required — everything else is optional.
+
+## Full layout
+
+```
+my-agent/
+│
+│   # ── Core identity (required) ──────────────────────────
+├── agent.yaml              # Manifest — name, version, model, skills, tools, compliance
+├── SOUL.md                 # Identity, personality, communication style, values
+│
+│   # ── Behavior and rules ────────────────────────────────
+├── RULES.md                # Hard constraints, must-always/must-never, safety boundaries
+├── DUTIES.md               # Segregation of duties policy and role boundaries
+├── AGENTS.md               # Framework-agnostic fallback instructions
+│
+│   # ── Capabilities ──────────────────────────────────────
+├── skills/                 # Reusable capability modules (SKILL.md + scripts)
+│   └── code-review/
+│       ├── SKILL.md
+│       ├── scripts/
+│       ├── references/
+│       └── assets/
+├── tools/                  # MCP-compatible tool definitions (YAML schemas)
+│   └── my-tool.yaml
+├── workflows/              # Multi-step procedures/playbooks
+│   ├── my-workflow.yaml    # Structured format
+│   └── my-workflow.md      # Narrative format
+│
+│   # ── Knowledge and memory ─────────────────────────────
+├── knowledge/              # Reference documents the agent can consult
+│   ├── index.yaml          # Document index with always_load flags
+│   └── docs/
+├── memory/                 # Persistent cross-session memory
+│   ├── MEMORY.md           # Working memory (max 200 lines)
+│   ├── memory.yaml         # Memory configuration
+│   └── archive/            # Historical memory snapshots
+│
+│   # ── Lifecycle and ops ─────────────────────────────────
+├── hooks/                  # Lifecycle event handlers
+│   ├── hooks.yaml          # Hook definitions
+│   └── scripts/            # Hook script implementations
+├── config/                 # Environment-specific overrides
+│   ├── default.yaml
+│   └── production.yaml
+├── compliance/             # Regulatory compliance artifacts
+│   ├── risk-assessment.md
+│   ├── regulatory-map.yaml
+│   └── validation-schedule.yaml
+│
+│   # ── Composition ───────────────────────────────────────
+├── agents/                 # Sub-agent definitions (recursive structure)
+│   └── fact-checker/
+│       ├── agent.yaml
+│       ├── SOUL.md
+│       └── DUTIES.md
+├── examples/               # Calibration interactions (few-shot)
+│   ├── good-outputs.md
+│   ├── bad-outputs.md
+│   └── scenarios/
+│
+│   # ── Runtime ───────────────────────────────────────────
+└── .gitagent/              # Runtime state (gitignored)
+    ├── deps/               # Installed dependencies
+    ├── state.json          # Current session state
+    └── cache/              # Temporary cache
+```
+
+## File and directory reference
+
+| Path | Required | Purpose |
+|---|---|---|
+| `agent.yaml` | **Required** | Agent manifest. The only file with a strict schema. Defines name, version, model, skills, tools, runtime limits, and compliance config. |
+| `SOUL.md` | **Required** | Agent identity. Defines personality, tone, values, domain expertise, and collaboration style. |
+| `RULES.md` | Optional | Hard behavioral constraints. Must-always/must-never rules, output constraints, safety guardrails, and regulatory constraints. |
+| `DUTIES.md` | Optional | Segregation of duties policy. Defines roles, conflict matrix, handoff workflows, isolation policy, and enforcement mode. |
+| `AGENTS.md` | Optional | Framework-agnostic fallback instructions compatible with Cursor, Copilot, and other tools that read `AGENTS.md`. |
+| `skills/` | Optional | Reusable capability modules following the Agent Skills open standard. Each skill is a subdirectory with a `SKILL.md` file. |
+| `tools/` | Optional | MCP-compatible tool definitions. Each tool is a `<name>.yaml` file with input/output schemas and implementation details. |
+| `workflows/` | Optional | Multi-step procedures. Supports structured YAML (`.yaml`) and narrative markdown (`.md`) formats. |
+| `knowledge/` | Optional | Reference documents the agent can consult at runtime. An optional `index.yaml` controls loading behavior. |
+| `memory/` | Optional | Persistent cross-session state. `MEMORY.md` is the working memory buffer (max 200 lines). `memory.yaml` configures layers and archival. |
+| `hooks/` | Optional | Lifecycle event handlers. `hooks.yaml` maps events to scripts in `scripts/`. |
+| `config/` | Optional | Environment-specific configuration overrides. `default.yaml` is merged with `<env>.yaml`. |
+| `compliance/` | Optional | Regulatory compliance artifacts required for `high` and `critical` risk-tier agents. |
+| `agents/` | Optional | Sub-agent definitions. Each sub-agent is either a full directory (with `agent.yaml` + `SOUL.md`) or a single `.md` file. |
+| `examples/` | Optional | Calibration interactions for few-shot prompting. |
+| `.gitagent/` | Runtime | Runtime state directory. Always gitignored. Created automatically at runtime. |
+
+## The .gitagent/ runtime directory
+
+The `.gitagent/` directory is created and managed automatically by the CLI. You should never commit it — add it to `.gitignore`:
+
+```
+.gitagent/
+```
+
+It contains:
+
+- **`deps/`** — Installed dependency agents cloned from git URLs
+- **`state.json`** — Current session state
+- **`cache/`** — Temporary cache for tools and skills
+
+When you run `gitagent install`, dependencies are cloned into `.gitagent/deps/` (unless a `mount` path is specified in `agent.yaml`, in which case they go there instead).
+
+## Minimal vs full layout
+
+GitAgent is designed to grow with your agent. Start minimal and add directories only when you need them.
+
+<CardGroup cols={2}>
+  <Card title="Minimal (2 files)" icon="seedling">
+    `agent.yaml` + `SOUL.md` — a valid, runnable agent. Use `gitagent init --template minimal` to scaffold.
+  </Card>
+  <Card title="Full layout" icon="building">
+    All directories enabled. Use `gitagent init --template full` to scaffold a production-ready structure with compliance, hooks, memory, and sub-agents.
+  </Card>
+</CardGroup>
+
+<Tip>
+The `standard` template (`gitagent init --template standard`) gives you `agent.yaml`, `SOUL.md`, `RULES.md`, `AGENTS.md`, `skills/`, `knowledge/`, and `tools/` — a good starting point for most agents.
+</Tip>

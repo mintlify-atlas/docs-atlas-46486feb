@@ -1,122 +1,150 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "GitAgent",
+  "theme": "palm",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#7c7c7c",
+    "light": "#060606",
+    "dark": "#dedede"
   },
-  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "https://media.brand.dev/7d477386-50ed-4abb-8893-75957aab2290.png",
+    "dark": "https://media.brand.dev/7d477386-50ed-4abb-8893-75957aab2290.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/open-gitagent/gitagent"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/open-gitagent/gitagent"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/overview",
+              "concepts/directory-structure",
+              "concepts/agent-manifest",
+              "concepts/soul-and-rules",
+              "concepts/skills",
+              "concepts/tools",
+              "concepts/workflows",
+              "concepts/memory",
+              "concepts/hooks",
+              "concepts/sub-agents",
+              "concepts/inheritance-composition"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "CLI Reference",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "cli/init",
+              "cli/validate",
+              "cli/info",
+              "cli/export",
+              "cli/import",
+              "cli/install",
+              "cli/run",
+              "cli/audit",
+              "cli/skills",
+              "cli/lyzr"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Adapters & Runners",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "adapters/overview",
+              "adapters/claude-code",
+              "adapters/openai",
+              "adapters/crewai",
+              "adapters/openclaw",
+              "adapters/nanobot",
+              "adapters/lyzr",
+              "adapters/github-models",
+              "adapters/git-auto-detect"
+            ]
+          },
+          {
+            "group": "Compliance",
+            "pages": [
+              "compliance/overview",
+              "compliance/risk-tiers",
+              "compliance/finra",
+              "compliance/federal-reserve",
+              "compliance/sec-cfpb",
+              "compliance/segregation-of-duties",
+              "compliance/audit-report"
+            ]
+          },
+          {
+            "group": "Patterns",
+            "pages": [
+              "patterns/human-in-the-loop",
+              "patterns/agent-versioning",
+              "patterns/branch-deployment",
+              "patterns/cicd",
+              "patterns/monorepo",
+              "patterns/agent-forking"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/minimal",
+              "examples/standard",
+              "examples/full",
+              "examples/lyzr-agent"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Specification",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Spec v0.1.0",
             "pages": [
-              "api-reference/introduction"
+              "spec/overview",
+              "spec/agent-yaml",
+              "spec/soul-md",
+              "spec/rules-md",
+              "spec/duties-md",
+              "spec/skills-standard",
+              "spec/tools-schema",
+              "spec/hooks-schema",
+              "spec/workflows-schema",
+              "spec/memory-schema",
+              "spec/knowledge-schema",
+              "spec/validation-rules",
+              "spec/json-schemas"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Regulatory Reference",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "spec/regulatory-finra",
+              "spec/regulatory-federal-reserve",
+              "spec/regulatory-sod"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }
